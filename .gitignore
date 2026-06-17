@@ -1,0 +1,47 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+.next/
+build/
+*.tsbuildinfo
+
+# Environment
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Editor / OS
+.DS_Store
+.vscode/
+.idea/
+*.swp
+
+# Prisma
+packages/db/prisma/migrations/dev.db*
+
+# Cache
+.turbo/
+.cache/
+
+# Puppeteer
+.cache-puppeteer/
+
+# PWA generated
+apps/web/public/sw.js
+apps/web/public/workbox-*.js
+apps/web/public/workbox-*.js.map
+apps/web/public/fallback-*.js
+
+# Credentials - NEVER commit
+.git-credentials
+*.pem
+*.key
