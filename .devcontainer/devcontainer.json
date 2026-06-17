@@ -1,0 +1,32 @@
+{
+  "name": "Telegram Job Aggregator",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:20",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {},
+    "ghcr.io/devcontainers-contrib/features/pnpm:2": {}
+  },
+  "forwardPorts": [3000, 4000, 5432, 6379],
+  "postCreateCommand": "bash scripts/codespace-setup.sh",
+  "postStartCommand": "docker compose up -d",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "Prisma.prisma",
+        "bradlc.vscode-tailwindcss",
+        "ms-azuretools.vscode-docker"
+      ],
+      "settings": {
+        "editor.formatOnSave": true,
+        "typescript.tsdk": "node_modules/typescript/lib"
+      }
+    }
+  },
+  "remoteEnv": {
+    "DATABASE_URL": "postgresql://tja:tja@localhost:5432/tja?schema=public",
+    "DIRECT_URL": "postgresql://tja:tja@localhost:5432/tja?schema=public",
+    "REDIS_URL": "redis://localhost:6379",
+    "NEXT_PUBLIC_API_URL": "${containerEnv:CODESPACE_NAME:+https://${CODESPACE_NAME}-4000.${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN}}"
+  }
+}

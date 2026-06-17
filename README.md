@@ -16,6 +16,7 @@ deduplication, PWA shell, push notifications setup, admin dashboard.
 
 - [Architecture](#architecture)
 - [Monorepo Layout](#monorepo-layout)
+- [Quick Start (GitHub Codespaces)](#quick-start-github-codespaces) — fastest, zero local setup
 - [Quick Start (Local)](#quick-start-local)
 - [Environment Variables](#environment-variables)
 - [Database](#database)
@@ -78,6 +79,61 @@ For full design rationale see `docs/architecture.md` (the original spec).
 ├── turbo.json
 └── package.json
 ```
+
+---
+
+## Quick Start (GitHub Codespaces)
+
+The fastest way to run this project — no local install needed.
+
+### One-click setup
+
+1. Go to https://github.com/tomassefiiw-cloud/Our_Scraper
+2. Click the green **Code** button → **Codespaces** tab → **Create codespace on main**
+3. Wait ~3-5 minutes. The devcontainer auto-runs `scripts/codespace-setup.sh` which:
+   - Installs all pnpm dependencies
+   - Installs Puppeteer's system deps (libnss3, libgbm1, etc.)
+   - Starts Postgres + Redis via `docker compose up -d`
+   - Runs Prisma migrations + seeds the 12 channels
+4. Once it finishes, you'll see a "✅ Codespace ready!" message with next steps.
+
+### Set your secrets
+
+Open the codespace menu (top-left) → **Settings → Secrets** and add:
+
+| Secret | Where to get it |
+|---|---|
+| `GEMINI_API_KEY` | https://aistudio.google.com/apikey (free, recommended) |
+| `JWT_SECRET` | Any 32+ char random string (e.g. `openssl rand -hex 32`) |
+| `VAPID_PUBLIC_KEY` | Run `npx web-push generate-vapid-keys` in the terminal |
+| `VAPID_PRIVATE_KEY` | (from the command above) |
+| `VAPID_SUBJECT` | `mailto:you@example.com` |
+| `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | Same value as `VAPID_PUBLIC_KEY` |
+
+After saving secrets, re-seed so the AI provider configs pick them up:
+
+```bash
+pnpm db:seed
+```
+
+### Run the stack
+
+Open 3 terminals (or use `tmux`) in the codespace:
+
+```bash
+pnpm api       # Express backend  → port 4000
+pnpm worker    # BullMQ workers + 30-min cron
+pnpm web       # Next.js PWA       → port 3000
+```
+
+Codespaces auto-forwards both ports. Click the **Ports** tab in the bottom panel to grab the public URLs — open the `3000` URL in your browser to use the PWA.
+
+### Tips
+
+- **Codespace menu → Ports** shows live URLs for 3000 (web) and 4000 (api).
+- The codespace sleeps after 30 min idle (free tier: 60 hours/month). `docker compose up -d` runs again on resume via `postStartCommand`.
+- To save your free hours: stop the codespace when done (Codespace menu → Stop codespace).
+- All data lives in the codespace's Docker volumes — it persists across restarts but is wiped if you **Delete** the codespace.
 
 ---
 
