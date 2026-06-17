@@ -1,0 +1,271 @@
+// =============================================================================
+// Prisma schema — mirrors §5 of the architecture document.
+// Run: pnpm --filter @tja/db run migrate
+// =============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Users & auth
+// ---------------------------------------------------------------------------
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  email        String   @unique
+  passwordHash String
+  displayName  String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  preferences    UserPreferences?
+  interactions   UserJobInteraction[]
+  aiConfigs      AiProviderConfig[]
+  pushSubs       PushSubscription[]
+
+  @@map("users")
+}
+
+model UserPreferences {
+  id                   String   @id @default(uuid()) @db.Uuid
+  userId               String   @unique @db.Uuid
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  minExperienceYears   Int      @default(0)
+  maxExperienceYears   Int      @default(50)
+  jobCategories        String[] @default([])
+  locations            String[] @default([])
+  addisAbabaAreas      String[] @default([])
+  workTypes            String[] @default([])
+  employmentTypes      String[] @default([])
+  excludeKeywords      String[] @default([])
+  minSalaryEtb         Int?
+  maxSalaryEtb         Int?
+  notifyPush           Boolean  @default(true)
+  notifyEmail          Boolean  @default(false)
+  purgeAfterDays       Int      @default(30)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@map("user_preferences")
+}
+
+// ---------------------------------------------------------------------------
+// Channels
+// ---------------------------------------------------------------------------
+
+model Channel {
+  id                String    @id @default(uuid()) @db.Uuid
+  telegramUsername  String    @unique
+  displayName       String?
+  channelType       String
+  scrapeConfig      Json      @default("{}")
+  extractionProfile String    @default("default")
+  isActive          Boolean   @default(true)
+  lastScrapedAt     DateTime?
+  lastError         String?
+  errorCount        Int       @default(0)
+  createdAt         DateTime  @default(now())
+
+  rawMessages RawMessage[]
+  jobs        Job[]
+  scrapeLogs  ScrapeLog[]
+
+  @@map("channels")
+}
+
+// ---------------------------------------------------------------------------
+// Raw messages
+// ---------------------------------------------------------------------------
+
+model RawMessage {
+  id              String   @id @default(uuid()) @db.Uuid
+  channelId       String   @db.Uuid
+  channel         Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  telegramMsgId   BigInt
+  messageText     String?  @db.Text
+  messageHtml     String?  @db.Text
+  postedAt        DateTime?
+  views           Int?
+  reactions       Json     @default("{}")
+  extractedLinks  String[] @default([])
+  status          String   @default("pending") // pending|extracted|failed|skipped
+  createdAt       DateTime @default(now())
+
+  jobs Job[]
+
+  @@unique([channelId, telegramMsgId])
+  @@index([channelId, telegramMsgId])
+  @@map("raw_messages")
+}
+
+// ---------------------------------------------------------------------------
+// Jobs (AI-extracted)
+// ---------------------------------------------------------------------------
+
+model Job {
+  id                  String    @id @default(uuid()) @db.Uuid
+  rawMessageId        String?   @db.Uuid
+  rawMessage          RawMessage? @relation(fields: [rawMessageId], references: [id], onDelete: Cascade)
+  channelId           String    @db.Uuid
+  channel             Channel   @relation(fields: [channelId], references: [id])
+
+  title               String?   @db.VarChar(500)
+  titleAmharic        String?   @db.VarChar(500)
+  companyName         String?   @db.VarChar(200)
+  companyNameAmharic  String?   @db.VarChar(200)
+
+  jobCategory         String?   @db.VarChar(50)
+  employmentType      String?   @db.VarChar(50)
+  workType            String?   @db.VarChar(50)
+
+  minExperienceYears  Int?
+  maxExperienceYears  Int?
+  experienceText      String?   @db.VarChar(200)
+
+  location            String?   @db.VarChar(200)
+  locationCity        String?   @db.VarChar(100)
+  locationArea        String?   @db.VarChar(100)
+  isRemote            Boolean   @default(false)
+
+  salaryText          String?   @db.VarChar(200)
+  salaryMinEtb        Int?
+  salaryMaxEtb        Int?
+  salaryCurrency      String    @default("ETB") @db.VarChar(10)
+
+  description         String?   @db.Text
+  requirements        String[]  @default([])
+  responsibilities    String[]  @default([])
+
+  howToApply          String?   @db.Text
+  applicationLink     String?   @db.VarChar(1000)
+  applicationEmail    String?   @db.VarChar(255)
+  deadline            DateTime?
+
+  isClosed            Boolean   @default(false)
+  isExpired           Boolean   @default(false)
+  isVague             Boolean   @default(false)
+
+  sourceUrl           String?   @db.VarChar(1000)
+  deepExtractedUrl    String?   @db.VarChar(1000)
+
+  aiProviderUsed      String?   @db.VarChar(50)
+  aiConfidence        Decimal?  @db.Decimal(3, 2)
+  extractionMethod    String    @default("telegram_only") @db.VarChar(50)
+
+  duplicateGroupId    String?   @db.Uuid
+  isPrimary           Boolean   @default(true)
+
+  postedAt            DateTime?
+  scrapedAt           DateTime  @default(now())
+  expiresAt           DateTime?
+
+  // Full-text search (maintained via trigger; see migration)
+  // searchVector -- TSVECTOR, added in raw SQL migration
+
+  interactions UserJobInteraction[]
+  notifications NotificationLog[]
+
+  @@index([channelId])
+  @@index([postedAt(sort: Desc)])
+  @@index([deadline])
+  @@index([jobCategory])
+  @@index([locationCity])
+  @@index([isClosed])
+  @@index([duplicateGroupId])
+  @@map("jobs")
+}
+
+model DuplicateGroup {
+  id              String   @id @default(uuid()) @db.Uuid
+  canonicalJobId  String?  @db.Uuid
+  detectionMethod String   @db.VarChar(50)
+  similarityScore Decimal? @db.Decimal(4, 3)
+  createdAt       DateTime @default(now())
+
+  @@map("duplicate_groups")
+}
+
+model UserJobInteraction {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobId     String   @db.Uuid
+  job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  action    String   @db.VarChar(20) // viewed|saved|hidden|applied|dismissed
+  createdAt DateTime @default(now())
+
+  @@unique([userId, jobId, action])
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("user_job_interactions")
+}
+
+model AiProviderConfig {
+  id            String   @id @default(uuid()) @db.Uuid
+  userId        String?  @db.Uuid
+  user          User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  providerName  String   @db.VarChar(50)
+  apiKey        String?  @db.VarChar(500)
+  apiBaseUrl    String?  @db.VarChar(500)
+  modelName     String   @db.VarChar(100)
+  isActive      Boolean  @default(true)
+  priority      Int      @default(0)
+  rateLimitRpm  Int      @default(15)
+  dailyQuota    Int      @default(1500)
+  currentUsage  Int      @default(0)
+  lastResetAt   DateTime @default(now())
+  isLocal       Boolean  @default(false)
+  ollamaUrl     String?  @db.VarChar(500)
+  createdAt     DateTime @default(now())
+
+  @@map("ai_provider_configs")
+}
+
+model ScrapeLog {
+  id               String    @id @default(uuid()) @db.Uuid
+  channelId        String?   @db.Uuid
+  channel          Channel?  @relation(fields: [channelId], references: [id])
+  startedAt        DateTime  @default(now())
+  endedAt          DateTime?
+  messagesFound    Int       @default(0)
+  messagesNew      Int       @default(0)
+  jobsExtracted    Int       @default(0)
+  jobsDuplicates   Int       @default(0)
+  errors           String[]  @default([])
+  status           String    @default("running") // running|completed|failed
+
+  @@map("scrape_logs")
+}
+
+model NotificationLog {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  jobId     String?  @db.Uuid
+  job       Job?     @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  channel   String   @db.VarChar(20) // push|email
+  status    String   @default("pending") // pending|sent|failed
+  error     String?
+  createdAt DateTime @default(now())
+
+  @@map("notification_logs")
+}
+
+model PushSubscription {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String   @db.Uuid
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint     String
+  keysP256dh   String
+  keysAuth     String
+  userAgent    String?
+  createdAt    DateTime @default(now())
+
+  @@map("push_subscriptions")
+}
