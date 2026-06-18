@@ -408,9 +408,11 @@ function loadProviders(): ProviderRuntime[] {
     );
   }
   if (env.OPENROUTER_API_KEY) {
-    // Default to a free model — meta-llama/llama-3.1-8b-instruct:free is free on OpenRouter
-    // Other good free options: google/gemini-2.0-flash-exp:free, mistralai/mistral-7b-instruct:free
-    const defaultOpenRouterModel = 'meta-llama/llama-3.1-8b-instruct:free';
+    // Default to nvidia/nemotron-3-nano-30b-a3b:free — tested working globally
+    // (including from regions where Gemini/Groq/OpenAI are blocked).
+    // Free, 256K context, handles JSON extraction well.
+    // Alternatives: qwen/qwen3-next-80b-a3b-instruct:free (when not rate-limited)
+    const defaultOpenRouterModel = 'nvidia/nemotron-3-nano-30b-a3b:free';
     console.log(`[ai-router] openrouter: key loaded (model: ${env.OPENROUTER_MODEL || defaultOpenRouterModel})`);
     providers.push(
       makeOpenAICompatible(

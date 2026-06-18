@@ -30,7 +30,7 @@ echo ""
 case "$PROVIDER" in
   openrouter)
     URL="https://openrouter.ai/api/v1/chat/completions"
-    MODEL="meta-llama/llama-3.1-8b-instruct:free"
+    MODEL="nvidia/nemotron-3-nano-30b-a3b:free"
     AUTH="Authorization: Bearer $KEY"
     EXTRA='-H "HTTP-Referer: https://tja.local" -H "X-Title: Telegram Job Aggregator"'
     ;;
