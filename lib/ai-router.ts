@@ -307,26 +307,86 @@ function makeOllama(priority: number, model: string, ollamaUrl: string): Provide
 
 let providersCache: ProviderRuntime[] | null = null;
 
+/**
+ * Validate Gemini key format. Real Google API keys start with 'AIza' and have
+ * no spaces. Common mistakes we catch:
+ *  - Keys with spaces (often from copy-paste artifacts or typing)
+ *  - Keys that don't start with 'AIza' (wrong service / fake key)
+ *  - Empty values
+ */
+function isValidGeminiKey(key: string): boolean {
+  if (!key || typeof key !== 'string') return false;
+  const trimmed = key.trim();
+  if (trimmed.length < 20) return false;
+  if (/\s/.test(trimmed)) return false; // no spaces allowed
+  // Real Gemini keys start with 'AIza'. Accept anything that looks plausible
+  // if it doesn't start with AIza (some users have keys from other Google services)
+  // but warn about it.
+  return true;
+}
+
 function loadProviders(): ProviderRuntime[] {
   if (providersCache) return providersCache;
   const providers: ProviderRuntime[] = [];
 
-  // Collect ALL Gemini keys from env: GEMINI_API_KEY, GEMINI_API_KEY_2, GEMINI_API_KEY_3, ...
+  // ===== GEMINI =====
+  // Collect ALL Gemini keys from env: GEMINI_API_KEY, GEMINI_API_KEY_2, ... _10
   // Multiple keys enable round-robin load balancing + automatic failover when one
   // key hits its daily quota (1500 req/day per key on free tier).
   const env = process.env;
   const geminiKeys: string[] = [];
-  if (env.GEMINI_API_KEY) geminiKeys.push(env.GEMINI_API_KEY);
+  const warnings: string[] = [];
+
+  if (env.GEMINI_API_KEY) {
+    const k = env.GEMINI_API_KEY.trim();
+    if (isValidGeminiKey(k)) {
+      geminiKeys.push(k);
+      if (!k.startsWith('AIza')) {
+        warnings.push(`GEMINI_API_KEY doesn't start with 'AIza' — may not be a real Gemini key`);
+      }
+    } else {
+      warnings.push(
+        `GEMINI_API_KEY looks invalid (length=${k.length}, has_spaces=${/\s/.test(k)}). ` +
+          `Real Gemini keys start with 'AIza' and have no spaces.`,
+      );
+    }
+  }
   for (let i = 2; i <= 10; i++) {
     const k = env[`GEMINI_API_KEY_${i}`];
-    if (k) geminiKeys.push(k);
+    if (k) {
+      const trimmed = k.trim();
+      if (isValidGeminiKey(trimmed)) {
+        geminiKeys.push(trimmed);
+      } else {
+        warnings.push(
+          `GEMINI_API_KEY_${i} looks invalid (length=${trimmed.length}, has_spaces=${/\s/.test(trimmed)}). Skipping.`,
+        );
+      }
+    }
   }
-  if (geminiKeys.length > 0) {
-    console.log(`[ai-router] gemini: ${geminiKeys.length} key(s) loaded — load balancing enabled`);
-    providers.push(
-      makeGemini(priority++, geminiKeys, env.GEMINI_MODEL || 'gemini-2.0-flash'),
+
+  // Check for the deprecated model name
+  const geminiModel = env.GEMINI_MODEL || 'gemini-2.0-flash';
+  if (geminiModel.includes('1.5-flash-latest') || geminiModel === 'gemini-1.5-flash') {
+    warnings.push(
+      `GEMINI_MODEL='${geminiModel}' is DEPRECATED and returns 404. ` +
+        `Change it to 'gemini-2.0-flash' in .env. (The router will auto-fallback, but fix your .env.)`,
     );
   }
+
+  if (geminiKeys.length > 0) {
+    console.log(`[ai-router] gemini: ${geminiKeys.length} key(s) loaded — load balancing enabled (model: ${geminiModel})`);
+    providers.push(makeGemini(priority++, geminiKeys, geminiModel));
+  } else {
+    console.warn('[ai-router] gemini: NO valid keys loaded');
+  }
+
+  // Print warnings at the end so they're visible
+  for (const w of warnings) {
+    console.warn(`[ai-router] ⚠️  ${w}`);
+  }
+
+  // ===== GROQ =====
   if (env.GROQ_API_KEY) {
     providers.push(
       makeOpenAICompatible(
