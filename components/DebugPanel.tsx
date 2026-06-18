@@ -81,19 +81,36 @@ export default function DebugPanel() {
     try {
       const res = await fetch('/api/debug?test=1');
       const data = await res.json();
-      setAiTest({
-        ok: data.test?.ok ?? false,
-        provider: data.test?.provider,
-        response: data.test?.response,
-        error: data.test?.error,
-        providers: data.providers,
-        disabledProviders: data.disabledProviders ?? [],
-      });
-      setMsg(
-        data.test?.ok
-          ? `✓ AI works (${data.test.provider}) — ${data.providers?.length ?? 0} provider(s) active`
-          : `✗ AI failed: ${data.test?.error ?? 'unknown'}`,
-      );
+      const providerCount = data.providers?.length ?? 0;
+      const usingRuleBased = providerCount === 0;
+
+      // If no AI provider is configured, the test endpoint will return ok=false
+      // with "No AI providers configured" — but that's expected, not an error.
+      // The app falls back to rule-based extraction automatically.
+      if (usingRuleBased) {
+        setAiTest({
+          ok: true, // not really "ok" but using rule-based which always works
+          provider: 'rule-based (no AI key set)',
+          response: 'Rule-based extractor is active. Add a DeepSeek key for better quality.',
+          providers: [],
+          disabledProviders: data.disabledProviders ?? [],
+        });
+        setMsg('ℹ️ No AI key set — using rule-based extractor (free, 100% offline). Add DEEPSEEK_API_KEY for better quality.');
+      } else {
+        setAiTest({
+          ok: data.test?.ok ?? false,
+          provider: data.test?.provider,
+          response: data.test?.response,
+          error: data.test?.error,
+          providers: data.providers,
+          disabledProviders: data.disabledProviders ?? [],
+        });
+        setMsg(
+          data.test?.ok
+            ? `✓ AI works (${data.test.provider}) — ${providerCount} provider(s) active`
+            : `✗ AI failed: ${data.test?.error ?? 'unknown'}`,
+        );
+      }
     } catch (err) {
       setAiTest({ ok: false, error: (err as Error).message });
       setMsg(`✗ AI test failed: ${(err as Error).message}`);
