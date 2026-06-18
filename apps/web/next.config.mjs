@@ -1,28 +1,28 @@
 /** @type {import('next').NextConfig} */
-const nextConfig = {
+const baseConfig = {
   reactStrictMode: true,
   experimental: {
-    // next-pwa compatibility — see install note in README
     typedRoutes: false,
   },
   async rewrites() {
     const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
-    return [
-      { source: '/api/:path*', destination: `${apiBase}/:path*` },
-    ];
+    return [{ source: '/api/:path*', destination: `${apiBase}/:path*` }];
   },
 };
 
-// PWA via next-pwa (optional — installed at runtime, falls back gracefully)
+// PWA via next-pwa (optional — falls back to manual SW if not installed)
+let finalConfig = baseConfig;
 try {
-  const withPWA = (await import('next-pwa')).default;
-  return withPWA({
+  const { default: withPWA } = await import('next-pwa');
+  finalConfig = withPWA({
     dest: 'public',
     register: true,
     skipWaiting: true,
     disable: process.env.NODE_ENV === 'development',
-  })(nextConfig);
+  })(baseConfig);
 } catch {
-  // next-pwa not installed yet — still a valid Next.js app
-  return nextConfig;
+  // next-pwa not installed — use the manual service worker in public/sw.js
+  console.log('[next.config] next-pwa not installed, using manual service worker');
 }
+
+export default finalConfig;
