@@ -20,7 +20,7 @@ let initPromise: Promise<Database> | null = null;
 
 const DB_STORAGE_KEY = 'tja-sqlite-db';
 const SCHEMA_VERSION_KEY = 'tja-schema-version';
-const CURRENT_SCHEMA_VERSION = '3'; // bumped — resetDb will wipe old data and re-apply
+const CURRENT_SCHEMA_VERSION = '4'; // bumped — old DBs with stale pending messages get re-created
 
 async function loadSqlJs(): Promise<SqlJsStatic> {
   if (SQL) return SQL;
@@ -76,6 +76,17 @@ function ensureSchema(db: Database): void {
   console.log(`[db] stored schema version: ${storedVersion}, current: ${CURRENT_SCHEMA_VERSION}`);
   if (storedVersion !== CURRENT_SCHEMA_VERSION) {
     applySchema(db);
+    // v4 migration: reset all raw_messages back to 'pending' so the new
+    // sync logic (which always extracts pending) will pick them up.
+    // This fixes the bug where messages were inserted but never extracted.
+    if (storedVersion < '4') {
+      try {
+        db.run(`UPDATE raw_messages SET status = 'pending' WHERE status IN ('extracted', 'failed')`);
+        console.log('[db] v4 migration: reset raw_messages status to pending');
+      } catch (err) {
+        console.warn('[db] v4 migration failed:', err);
+      }
+    }
     if (typeof localStorage !== 'undefined') {
       localStorage.setItem(SCHEMA_VERSION_KEY, CURRENT_SCHEMA_VERSION);
     }

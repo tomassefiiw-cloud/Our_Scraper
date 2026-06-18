@@ -43,9 +43,11 @@ export default function SyncPanel() {
             channel: c.telegram_username,
             messagesFound: 0,
             messagesNew: 0,
+            pendingExtracted: 0,
             jobsExtracted: 0,
             jobsDuplicates: 0,
             errors: [(err as Error).message],
+            firstError: (err as Error).message,
           },
         ]);
       }
@@ -94,6 +96,7 @@ export default function SyncPanel() {
                 <th className="text-left p-2">Channel</th>
                 <th className="text-left p-2">Found</th>
                 <th className="text-left p-2">New</th>
+                <th className="text-left p-2">Pending</th>
                 <th className="text-left p-2">Jobs</th>
                 <th className="text-left p-2">Dupes</th>
                 <th className="text-left p-2">Errors</th>
@@ -101,19 +104,28 @@ export default function SyncPanel() {
             </thead>
             <tbody>
               {results.map((r, i) => (
-                <tr key={i} className="border-t border-gray-100">
-                  <td className="p-2">{r.channel}</td>
-                  <td className="p-2">{r.messagesFound}</td>
-                  <td className="p-2">{r.messagesNew}</td>
-                  <td className="p-2">{r.jobsExtracted}</td>
-                  <td className="p-2">{r.jobsDuplicates}</td>
-                  <td className="p-2 text-red-600">
-                    {r.errors.length > 0 ? `${r.errors.length} err` : ''}
+                <tr key={i} className={`border-t border-gray-100 ${r.errors.length > 0 ? 'bg-red-50' : ''}`}>
+                  <td className="p-2 font-mono">{r.channel}</td>
+                  <td className="p-2 text-right">{r.messagesFound}</td>
+                  <td className="p-2 text-right">{r.messagesNew}</td>
+                  <td className="p-2 text-right">{r.pendingExtracted}</td>
+                  <td className="p-2 text-right font-semibold">{r.jobsExtracted}</td>
+                  <td className="p-2 text-right">{r.jobsDuplicates}</td>
+                  <td className={`p-2 text-right ${r.errors.length > 0 ? 'text-red-600 font-bold' : ''}`}>
+                    {r.errors.length > 0 ? r.errors.length : ''}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+
+          {/* Show first error message for any failed channel */}
+          {results.some((r) => r.firstError) && (
+            <div className="mt-2 p-2 bg-red-100 border border-red-300 rounded text-xs text-red-800">
+              <strong>First error:</strong>{' '}
+              {results.find((r) => r.firstError)?.firstError}
+            </div>
+          )}
         </div>
       )}
     </div>

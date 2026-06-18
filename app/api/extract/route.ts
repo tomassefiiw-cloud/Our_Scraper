@@ -39,13 +39,16 @@ export async function POST(req: Request) {
   }
 
   try {
+    console.log(`[api/extract] channel=${channel}, text_len=${message_text.length}, links=${links?.length ?? 0}`);
     const result = await extractJobs(message_text, links ?? [], config);
+    console.log(`[api/extract] ✓ extracted ${result.jobs.length} jobs via ${result.provider}`);
     return NextResponse.json({
       jobs: result.jobs.map((j) => ({ ...j, _provider: result.provider })),
       provider: result.provider,
     });
   } catch (err) {
     const msg = (err as Error).message;
+    console.error(`[api/extract] ✗ failed for channel=${channel}:`, msg);
     return NextResponse.json(
       { error: msg },
       { status: 502 },
