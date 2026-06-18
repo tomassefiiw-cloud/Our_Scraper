@@ -27,6 +27,8 @@ interface AiTestResult {
   provider?: string;
   response?: string;
   error?: string;
+  geminiKeyCount?: number;
+  providers?: string[];
 }
 
 export default function DebugPanel() {
@@ -79,13 +81,20 @@ export default function DebugPanel() {
     try {
       const res = await fetch('/api/debug?test=1');
       const data = await res.json();
+      const geminiKeyCount = data.envStatus?.GEMINI_KEY_COUNT ?? 0;
       setAiTest({
         ok: data.test?.ok ?? false,
         provider: data.test?.provider,
         response: data.test?.response,
         error: data.test?.error,
+        geminiKeyCount,
+        providers: data.providers,
       });
-      setMsg(data.test?.ok ? `✓ AI works (${data.test.provider})` : `✗ AI failed: ${data.test?.error ?? 'unknown'}`);
+      setMsg(
+        data.test?.ok
+          ? `✓ AI works (${data.test.provider}) — ${geminiKeyCount} Gemini key(s) loaded`
+          : `✗ AI failed: ${data.test?.error ?? 'unknown'} — ${geminiKeyCount} Gemini key(s) loaded`,
+      );
     } catch (err) {
       setAiTest({ ok: false, error: (err as Error).message });
       setMsg(`✗ AI test failed: ${(err as Error).message}`);
@@ -186,10 +195,22 @@ export default function DebugPanel() {
             {aiTest.ok ? (
               <>
                 <p><strong>✓ Works</strong> (provider: {aiTest.provider})</p>
-                <p className="font-mono text-[10px] mt-1 break-all">Response: {aiTest.response}</p>
+                <p className="mt-1">Providers configured: {aiTest.providers?.join(', ')}</p>
+                <p className="mt-1">Gemini keys loaded: <strong>{aiTest.geminiKeyCount}</strong></p>
+                {aiTest.geminiKeyCount && aiTest.geminiKeyCount > 1 && (
+                  <p className="text-[10px] mt-1 text-green-700">→ Load balancing enabled ({aiTest.geminiKeyCount} × 1500 = {aiTest.geminiKeyCount * 1500} req/day)</p>
+                )}
+                <p className="font-mono text-[10px] mt-1 break-all text-gray-600">Response: {aiTest.response}</p>
               </>
             ) : (
-              <p><strong>✗ Failed:</strong> {aiTest.error}</p>
+              <>
+                <p><strong>✗ Failed:</strong> {aiTest.error}</p>
+                <p className="mt-1">Providers configured: {aiTest.providers?.join(', ') || 'none'}</p>
+                <p className="mt-1">Gemini keys loaded: <strong>{aiTest.geminiKeyCount ?? 0}</strong></p>
+                {aiTest.geminiKeyCount === 0 && (
+                  <p className="text-[10px] mt-1 text-red-700">→ No Gemini keys! Add GEMINI_API_KEY to .env and restart dev server.</p>
+                )}
+              </>
             )}
           </div>
         )}

@@ -97,18 +97,31 @@ function makeOpenAICompatible(
   };
 }
 
-function makeGemini(priority: number, apiKey: string, model: string): ProviderRuntime {
+function makeGemini(priority: number, apiKeys: string[], model: string): ProviderRuntime {
   // Fallback chain — if the primary model 404s (deprecated), try alternatives.
   // Google has renamed/deprecated models multiple times; this makes us resilient.
-  // De-duplicate in case the user's configured model is already in the fallback list.
   const fallbacks = ['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-flash-latest', 'gemini-1.5-flash'];
   const modelFallbacks = [model, ...fallbacks.filter((m) => m !== model)];
+
+  // Round-robin key index — shared across calls in this provider instance
+  let keyIndex = 0;
+  // Track keys that hit quota (429) — skip them for the rest of the day
+  const quotaExhaustedKeys = new Set<string>();
+
+  // Reset the quota-exhausted set at midnight UTC (Google resets at midnight Pacific,
+  // but UTC midnight is a safe approximation for the daily reset)
+  setInterval(() => {
+    if (quotaExhaustedKeys.size > 0) {
+      console.log('[ai-router] gemini: resetting quota-exhausted keys set (new day)');
+      quotaExhaustedKeys.clear();
+    }
+  }, 24 * 60 * 60 * 1000).unref?.();
 
   return {
     name: 'gemini',
     priority,
     isLocal: false,
-    rpm: 15,
+    rpm: 15 * apiKeys.length, // aggregate RPM scales with number of keys
     async call(params) {
       const body: Record<string, unknown> = {
         contents: [{ role: 'user', parts: [{ text: params.prompt }] }],
@@ -122,42 +135,90 @@ function makeGemini(priority: number, apiKey: string, model: string): ProviderRu
         body.systemInstruction = { parts: [{ text: params.systemPrompt }] };
       }
 
+      // Get available keys (exclude quota-exhausted ones)
+      const availableKeys = apiKeys.filter((k) => !quotaExhaustedKeys.has(k));
+      if (availableKeys.length === 0) {
+        throw new Error(
+          `Gemini: all ${apiKeys.length} keys have exhausted their daily quota. ` +
+            `Wait until midnight Pacific time for reset, or add more keys.`,
+        );
+      }
+
       let lastError: Error | null = null;
-      for (const m of modelFallbacks) {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${apiKey}`;
-        const res = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        });
-        if (res.ok) {
-          const data = (await res.json()) as {
-            candidates?: { content?: { parts?: { text?: string }[] } }[];
-            error?: { message?: string };
-          };
-          if (data.error) {
-            lastError = new Error(`Gemini ${m}: ${data.error.message}`);
+
+      // Try each available key in round-robin order, starting from keyIndex
+      for (let attempt = 0; attempt < availableKeys.length; attempt++) {
+        const key = availableKeys[(keyIndex + attempt) % availableKeys.length];
+        // Advance the round-robin index for next call
+        if (attempt === 0) keyIndex = (keyIndex + 1) % availableKeys.length;
+
+        // Try model fallbacks for this key
+        for (const m of modelFallbacks) {
+          const url = `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${key}`;
+          const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          });
+
+          if (res.ok) {
+            const data = (await res.json()) as {
+              candidates?: { content?: { parts?: { text?: string }[] } }[];
+              error?: { message?: string };
+            };
+            if (data.error) {
+              lastError = new Error(`Gemini ${m}: ${data.error.message}`);
+              continue; // try next model
+            }
+            console.log(
+              `[ai-router] gemini success with model: ${m}, key: ${key.slice(0, 8)}...`,
+            );
+            return {
+              content: data.candidates?.[0]?.content?.parts?.[0]?.text ?? '',
+              provider: 'gemini',
+            };
+          }
+
+          // 429 = quota exceeded for THIS key — mark it as exhausted and try next key
+          if (res.status === 429) {
+            console.warn(
+              `[ai-router] gemini key ${key.slice(0, 8)}... hit quota (429), ` +
+                `marking as exhausted for the day, trying next key`,
+            );
+            quotaExhaustedKeys.add(key);
+            lastError = new Error(`Gemini key ${key.slice(0, 8)}... quota exceeded (429)`);
+            break; // exit model loop, try next key
+          }
+
+          // 404 / 400 = model not found / bad request, try next model fallback
+          if (res.status === 404 || res.status === 400) {
+            const text = await res.text();
+            console.warn(
+              `[ai-router] gemini model ${m} failed ${res.status}, trying next fallback`,
+            );
+            lastError = new Error(`Gemini ${m} ${res.status}: ${text.slice(0, 100)}`);
             continue;
           }
-          console.log(`[ai-router] gemini success with model: ${m}`);
-          return {
-            content: data.candidates?.[0]?.content?.parts?.[0]?.text ?? '',
-            provider: 'gemini',
-          };
-        }
-        // 404 = model not found, try next fallback
-        // 400 = bad request (often model-specific), try next fallback
-        // Other errors (401/429/500) = real failures, throw immediately
-        if (res.status === 404 || res.status === 400) {
+
+          // 401 = invalid key — mark as exhausted (likely revoked)
+          if (res.status === 401) {
+            console.warn(
+              `[ai-router] gemini key ${key.slice(0, 8)}... is invalid (401), ` +
+                `marking as exhausted`,
+            );
+            quotaExhaustedKeys.add(key);
+            const text = await res.text();
+            lastError = new Error(`Gemini key ${key.slice(0, 8)}... invalid (401): ${text.slice(0, 100)}`);
+            break; // try next key
+          }
+
+          // Other errors (500, 503, etc.) — throw immediately, don't retry
           const text = await res.text();
-          console.warn(`[ai-router] gemini model ${m} failed ${res.status}, trying next fallback`);
-          lastError = new Error(`Gemini ${m} ${res.status}: ${text.slice(0, 100)}`);
-          continue;
+          throw new Error(`Gemini ${m} API ${res.status}: ${text.slice(0, 200)}`);
         }
-        const text = await res.text();
-        throw new Error(`Gemini ${m} API ${res.status}: ${text.slice(0, 200)}`);
       }
-      throw lastError ?? new Error('Gemini: all model fallbacks exhausted');
+
+      throw lastError ?? new Error('Gemini: all keys and model fallbacks exhausted');
     },
   };
 }
@@ -250,15 +311,21 @@ function loadProviders(): ProviderRuntime[] {
   if (providersCache) return providersCache;
   const providers: ProviderRuntime[] = [];
 
-  // Each provider can have multiple keys (GEMINI_API_KEY, GEMINI_API_KEY_2, ...)
-  // For simplicity v2: one key per provider; multi-key can be added later.
+  // Collect ALL Gemini keys from env: GEMINI_API_KEY, GEMINI_API_KEY_2, GEMINI_API_KEY_3, ...
+  // Multiple keys enable round-robin load balancing + automatic failover when one
+  // key hits its daily quota (1500 req/day per key on free tier).
   const env = process.env;
-  let priority = 0;
-
-  if (env.GEMINI_API_KEY) {
-    // Default to gemini-2.0-flash (current free-tier model as of 2026).
-    // The old 'gemini-1.5-flash-latest' was deprecated and returns 404.
-    providers.push(makeGemini(priority++, env.GEMINI_API_KEY, env.GEMINI_MODEL || 'gemini-2.0-flash'));
+  const geminiKeys: string[] = [];
+  if (env.GEMINI_API_KEY) geminiKeys.push(env.GEMINI_API_KEY);
+  for (let i = 2; i <= 10; i++) {
+    const k = env[`GEMINI_API_KEY_${i}`];
+    if (k) geminiKeys.push(k);
+  }
+  if (geminiKeys.length > 0) {
+    console.log(`[ai-router] gemini: ${geminiKeys.length} key(s) loaded — load balancing enabled`);
+    providers.push(
+      makeGemini(priority++, geminiKeys, env.GEMINI_MODEL || 'gemini-2.0-flash'),
+    );
   }
   if (env.GROQ_API_KEY) {
     providers.push(

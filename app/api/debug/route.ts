@@ -19,8 +19,16 @@ export async function GET(req: Request) {
   const shouldTest = url.searchParams.get('test') === '1';
 
   const providers = listConfiguredProviders();
-  const envStatus: Record<string, boolean> = {
+
+  // Count Gemini keys (GEMINI_API_KEY + GEMINI_API_KEY_2..10)
+  const geminiKeyCount = [
+    process.env.GEMINI_API_KEY,
+    ...Array.from({ length: 9 }, (_, i) => process.env[`GEMINI_API_KEY_${i + 2}`]),
+  ].filter(Boolean).length;
+
+  const envStatus: Record<string, boolean | number> = {
     GEMINI_API_KEY: !!process.env.GEMINI_API_KEY,
+    GEMINI_KEY_COUNT: geminiKeyCount,
     GROQ_API_KEY: !!process.env.GROQ_API_KEY,
     DEEPSEEK_API_KEY: !!process.env.DEEPSEEK_API_KEY,
     OPENROUTER_API_KEY: !!process.env.OPENROUTER_API_KEY,
@@ -32,7 +40,7 @@ export async function GET(req: Request) {
 
   const result: {
     providers: string[];
-    envStatus: Record<string, boolean>;
+    envStatus: Record<string, boolean | number>;
     test?: { ok: boolean; provider?: string; response?: string; error?: string };
   } = {
     providers,
