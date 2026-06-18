@@ -66,30 +66,34 @@ async function main() {
     const hasKey = env.isLocal || (env.key && env.key.length > 0);
     if (!hasKey) continue;
 
-    await prisma.aiProviderConfig.upsert({
-      where: { id: `seed-${name}` },
-      update: {
-        apiKey: env.key,
-        modelName: env.model,
-        isLocal: env.isLocal ?? false,
-        ollamaUrl: env.ollamaUrl,
-        apiBaseUrl: env.baseUrl,
-        isActive: true,
-      },
-      create: {
-        id: `seed-${name}`,
-        userId: null,
-        providerName: name,
-        apiKey: env.key,
-        modelName: env.model,
-        isLocal: env.isLocal ?? false,
-        ollamaUrl: env.ollamaUrl,
-        apiBaseUrl: env.baseUrl,
-        isActive: true,
-        priority: priority++,
-      },
+    // Find existing system-level config for this provider (user_id IS NULL)
+    const existing = await prisma.aiProviderConfig.findFirst({
+      where: { providerName: name, userId: null },
     });
-    console.log(`  ✓ ${name} (priority ${priority - 1})`);
+
+    const data = {
+      apiKey: env.key,
+      modelName: env.model,
+      isLocal: env.isLocal ?? false,
+      ollamaUrl: env.ollamaUrl,
+      apiBaseUrl: env.baseUrl,
+      isActive: true,
+      priority,
+      rateLimitRpm: 15,
+      dailyQuota: 1500,
+      currentUsage: 0,
+      lastResetAt: new Date(),
+    };
+
+    if (existing) {
+      await prisma.aiProviderConfig.update({ where: { id: existing.id }, data });
+    } else {
+      await prisma.aiProviderConfig.create({
+        data: { ...data, providerName: name, userId: null },
+      });
+    }
+    console.log(`  ✓ ${name} (priority ${priority})`);
+    priority++;
   }
 
   console.log('✅ Seed complete');
