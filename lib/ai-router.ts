@@ -461,6 +461,11 @@ function loadProviders(): ProviderRuntime[] {
 /**
  * Try providers in priority order. Returns first success.
  */
+// Circuit breaker — providers that fail with hard errors (403 region block,
+// 401 invalid key) get auto-disabled for the session so we don't waste time
+// retrying them on every call. Resets when the serverless instance cold-starts.
+const disabledProviders = new Set<AIProviderName>();
+
 export async function complete(params: AICompletionParams): Promise<AICompletionResult> {
   const providers = loadProviders();
   if (providers.length === 0) {
@@ -471,6 +476,10 @@ export async function complete(params: AICompletionParams): Promise<AICompletion
 
   const errors: { provider: AIProviderName; error: string }[] = [];
   for (const p of providers) {
+    // Skip providers that have been disabled by the circuit breaker
+    if (disabledProviders.has(p.name)) {
+      continue;
+    }
     if (isRateLimited(p.name, p.rpm)) {
       console.warn(`[ai-router] ${p.name} rate limited, skipping`);
       continue;
@@ -480,11 +489,27 @@ export async function complete(params: AICompletionParams): Promise<AICompletion
       const result = await p.call(params);
       return result;
     } catch (err) {
-      errors.push({ provider: p.name, error: (err as Error).message });
-      console.error(`[ai-router] ${p.name} failed:`, (err as Error).message);
+      const msg = (err as Error).message;
+      errors.push({ provider: p.name, error: msg });
+      console.error(`[ai-router] ${p.name} failed:`, msg);
+
+      // Circuit breaker: if the error is a hard 403 (region block) or 401 (invalid key),
+      // disable this provider for the rest of the session.
+      // We detect this by checking the error message for these status codes.
+      if (msg.includes(' 403:') || msg.includes(' 401:') || msg.includes('Forbidden') || msg.includes('Unauthorized')) {
+        console.warn(`[ai-router] ${p.name} disabled for this session (circuit breaker)`);
+        disabledProviders.add(p.name);
+      }
     }
   }
 
+  const activeProviders = providers.filter((p) => !disabledProviders.has(p.name));
+  if (activeProviders.length === 0) {
+    throw new Error(
+      `All AI providers failed and disabled. Errors: ${JSON.stringify(errors)}. ` +
+        `Restart the dev server to reset the circuit breaker.`,
+    );
+  }
   throw new Error(`All AI providers failed: ${JSON.stringify(errors)}`);
 }
 
@@ -511,5 +536,11 @@ export function parseJsonLoose<T = unknown>(raw: string): T {
 }
 
 export function listConfiguredProviders(): AIProviderName[] {
-  return loadProviders().map((p) => p.name);
+  return loadProviders()
+    .filter((p) => !disabledProviders.has(p.name))
+    .map((p) => p.name);
+}
+
+export function listDisabledProviders(): AIProviderName[] {
+  return Array.from(disabledProviders);
 }
