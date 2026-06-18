@@ -169,3 +169,19 @@ export async function run(
   db.run(sql, params as any);
   await persistDb();
 }
+
+/**
+ * Run a write statement and return the number of rows affected.
+ * Useful for `INSERT OR IGNORE` to detect whether the row was actually inserted
+ * vs skipped due to a UNIQUE constraint.
+ */
+export async function runWithChanges(
+  sql: string,
+  params: unknown[] = [],
+): Promise<number> {
+  const db = await getDb();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  db.run(sql, params as any);
+  await persistDb();
+  return db.getRowsModified();
+}

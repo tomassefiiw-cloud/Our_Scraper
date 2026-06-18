@@ -14,7 +14,7 @@
  * the raw message text and channel name, gets back structured jobs.
  */
 
-import { run, queryAll, queryOne, persistDb } from './db';
+import { run, runWithChanges, queryAll, queryOne, persistDb } from './db';
 import type { RawMessageRow, JobRow } from './schema';
 import type { RawMessage } from './scraper';
 import type { ExtractedJob } from './extractor';
@@ -56,12 +56,13 @@ export async function syncChannel(
     const messages = data.messages ?? [];
     result.messagesFound = messages.length;
 
-    // 2. Filter by lookback + skip patterns
-    const lookbackMs = (opts.lookbackHours ?? 2) * 60 * 60 * 1000;
-    const cutoff = Date.now() - lookbackMs;
+    // 2. Filter by skip patterns (lookback removed — UNIQUE constraint handles dedup)
+    // Note: the previous lookback filter (default 2h) was too aggressive — on first
+    // sync, most channel messages are older than 2h, so they got filtered out and
+    // nothing was extracted. The UNIQUE(channel_username, telegram_msg_id) constraint
+    // already dedupes across syncs, so lookback is redundant.
     const skipPatterns = opts.skipPatterns ?? [];
     const fresh = messages.filter((m) => {
-      if (new Date(m.posted_at).getTime() < cutoff) return false;
       const text = m.message_text ?? '';
       if (skipPatterns.some((p) => text.toLowerCase().includes(p.toLowerCase()))) return false;
       return true;
@@ -70,7 +71,7 @@ export async function syncChannel(
     // 3. Insert raw_messages (skip duplicates via UNIQUE constraint)
     for (const msg of fresh) {
       try {
-        await run(
+        const changes = await runWithChanges(
           `INSERT OR IGNORE INTO raw_messages
              (channel_username, telegram_msg_id, message_text, message_html, posted_at, views, extracted_links_json, status)
            VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')`,
@@ -84,12 +85,8 @@ export async function syncChannel(
             JSON.stringify(msg.extracted_links),
           ],
         );
-        // Check if it was actually inserted (not a duplicate)
-        const inserted = await queryOne<{ id: number }>(
-          `SELECT id FROM raw_messages WHERE channel_username = ? AND telegram_msg_id = ? AND status = 'pending'`,
-          [msg.channel_username, msg.telegram_msg_id],
-        );
-        if (inserted) {
+        // changes=1 means the row was actually inserted; 0 means it was a duplicate (skipped)
+        if (changes > 0) {
           result.messagesNew++;
         }
       } catch (err) {
