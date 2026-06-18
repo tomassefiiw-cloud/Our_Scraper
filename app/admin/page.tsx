@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import SyncPanel from '@/components/SyncPanel';
+import DebugPanel from '@/components/DebugPanel';
 import { queryAll } from '@/lib/db';
 import { CHANNEL_CONFIGS } from '@/lib/channels';
 import type { JobRow } from '@/lib/schema';
@@ -79,6 +80,11 @@ export default function AdminPage() {
           and stores in local SQLite. Uses server-side AI providers (keys never exposed to browser).
         </p>
         <SyncPanel />
+      </section>
+
+      {/* Debug */}
+      <section className="space-y-2">
+        <DebugPanel />
       </section>
 
       {/* Channel health */}

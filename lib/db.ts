@@ -1,19 +1,18 @@
 /**
  * Client-side SQLite via sql.js, persisted to IndexedDB.
  *
- * On first load: creates a fresh DB and runs SCHEMA_SQL.
+ * On first load: creates a fresh DB, runs SCHEMA_SQL, seeds the channels table.
  * On subsequent loads: restores the saved DB bytes from IndexedDB.
  * After every write: persists the DB bytes back to IndexedDB.
  *
  * Usage (only in client components):
  *   import { getDb, persistDb, queryAll, run } from '@/lib/db';
- *   const jobs = await queryAll('SELECT * FROM jobs ORDER BY posted_at DESC LIMIT 20');
- *   await run('INSERT INTO jobs ...', [...params]);
  */
 
 import initSqlJs, { type Database, type SqlJsStatic } from 'sql.js';
-import { get, set } from 'idb-keyval';
+import { get, set, del } from 'idb-keyval';
 import { SCHEMA_SQL } from './schema';
+import { CHANNEL_CONFIGS } from './channels';
 
 let SQL: SqlJsStatic | null = null;
 let dbInstance: Database | null = null;
@@ -21,12 +20,13 @@ let initPromise: Promise<Database> | null = null;
 
 const DB_STORAGE_KEY = 'tja-sqlite-db';
 const SCHEMA_VERSION_KEY = 'tja-schema-version';
-const CURRENT_SCHEMA_VERSION = '2';
+const CURRENT_SCHEMA_VERSION = '3'; // bumped — resetDb will wipe old data and re-apply
 
 async function loadSqlJs(): Promise<SqlJsStatic> {
   if (SQL) return SQL;
-  // Load WASM from /public/sql-wasm.wasm (must exist; downloaded by postinstall script)
+  console.log('[db] loading sql.js WASM from /sql-wasm.wasm');
   SQL = await initSqlJs({ locateFile: () => '/sql-wasm.wasm' });
+  console.log('[db] sql.js loaded');
   return SQL;
 }
 
@@ -35,9 +35,37 @@ async function loadExistingDbBytes(): Promise<Uint8Array | null> {
   try {
     const stored = await get<Uint8Array>(DB_STORAGE_KEY);
     return stored ?? null;
-  } catch {
+  } catch (err) {
+    console.warn('[db] loadExistingDbBytes failed:', err);
     return null;
   }
+}
+
+function applySchema(db: Database): void {
+  console.log('[db] applying schema');
+  db.run(SCHEMA_SQL);
+  // Seed channels table if empty
+  const result = db.exec(`SELECT COUNT(*) as c FROM channels`);
+  const count = result[0]?.values?.[0]?.[0] ?? 0;
+  console.log(`[db] channels table has ${count} rows`);
+  if (count === 0) {
+    console.log('[db] seeding channels table');
+    for (const c of CHANNEL_CONFIGS) {
+      db.run(
+        `INSERT OR IGNORE INTO channels (username, display_name, channel_type, is_active, config_json)
+         VALUES (?, ?, ?, 1, ?)`,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        [c.telegram_username, c.display_name, c.channel_type, JSON.stringify(c)] as any,
+      );
+    }
+    console.log(`[db] seeded ${CHANNEL_CONFIGS.length} channels`);
+  }
+  // Verify tables exist (for debugging)
+  const tables = db.exec(
+    `SELECT name FROM sqlite_master WHERE type='table' ORDER BY name`,
+  );
+  const tableNames = tables[0]?.values?.map((v) => v[0]) ?? [];
+  console.log('[db] tables in DB:', tableNames);
 }
 
 function ensureSchema(db: Database): void {
@@ -45,20 +73,15 @@ function ensureSchema(db: Database): void {
     typeof localStorage !== 'undefined'
       ? localStorage.getItem(SCHEMA_VERSION_KEY) ?? '0'
       : '0';
-
+  console.log(`[db] stored schema version: ${storedVersion}, current: ${CURRENT_SCHEMA_VERSION}`);
   if (storedVersion !== CURRENT_SCHEMA_VERSION) {
-    // SCHEMA_SQL uses CREATE TABLE IF NOT EXISTS — idempotent
-    db.run(SCHEMA_SQL);
+    applySchema(db);
     if (typeof localStorage !== 'undefined') {
       localStorage.setItem(SCHEMA_VERSION_KEY, CURRENT_SCHEMA_VERSION);
     }
   }
 }
 
-/**
- * Get the singleton Database instance, initializing it if needed.
- * Safe to call multiple times — returns the same instance.
- */
 export async function getDb(): Promise<Database> {
   if (typeof window === 'undefined') {
     throw new Error('getDb() can only be called in the browser');
@@ -69,14 +92,18 @@ export async function getDb(): Promise<Database> {
   initPromise = (async () => {
     const sql = await loadSqlJs();
     const existingBytes = await loadExistingDbBytes();
+    console.log(`[db] existing DB bytes: ${existingBytes?.length ?? 0}`);
 
     if (existingBytes && existingBytes.length > 0) {
       try {
         dbInstance = new sql.Database(existingBytes);
-      } catch {
+        console.log('[db] restored existing DB from IndexedDB');
+      } catch (err) {
+        console.warn('[db] failed to restore DB, starting fresh:', err);
         dbInstance = new sql.Database();
       }
     } else {
+      console.log('[db] no existing DB, creating fresh');
       dbInstance = new sql.Database();
     }
 
@@ -88,10 +115,6 @@ export async function getDb(): Promise<Database> {
   return initPromise;
 }
 
-/**
- * Persist the current DB state to IndexedDB.
- * Call after any write operation.
- */
 export async function persistDb(): Promise<void> {
   if (!dbInstance) return;
   if (typeof window === 'undefined') return;
@@ -104,29 +127,35 @@ export async function persistDb(): Promise<void> {
 }
 
 /**
- * Reset the DB entirely (used for "clear all data" button).
+ * Reset the DB entirely — truly wipes IndexedDB and re-creates everything.
  */
 export async function resetDb(): Promise<void> {
+  console.log('[db] resetDb — wiping everything');
   if (dbInstance) {
-    dbInstance.close();
+    try {
+      dbInstance.close();
+    } catch (err) {
+      console.warn('[db] error closing old instance:', err);
+    }
     dbInstance = null;
   }
   initPromise = null;
   if (typeof window !== 'undefined') {
-    await set(DB_STORAGE_KEY, null);
+    // Actually delete from IndexedDB (not just set to null)
+    try {
+      await del(DB_STORAGE_KEY);
+    } catch (err) {
+      console.warn('[db] failed to delete IndexedDB key:', err);
+    }
     if (typeof localStorage !== 'undefined') {
       localStorage.removeItem(SCHEMA_VERSION_KEY);
     }
   }
+  console.log('[db] IndexedDB wiped, re-initializing fresh DB');
   await getDb();
+  console.log('[db] reset complete');
 }
 
-/**
- * Run a query that returns rows. Typed via generic.
- *
- * Example:
- *   const jobs = await queryAll<JobRow>('SELECT * FROM jobs LIMIT 20');
- */
 export async function queryAll<T = Record<string, unknown>>(
   sql: string,
   params: unknown[] = [],
@@ -146,9 +175,6 @@ export async function queryAll<T = Record<string, unknown>>(
   }
 }
 
-/**
- * Run a query that returns a single row (or null).
- */
 export async function queryOne<T = Record<string, unknown>>(
   sql: string,
   params: unknown[] = [],
@@ -157,9 +183,6 @@ export async function queryOne<T = Record<string, unknown>>(
   return rows[0] ?? null;
 }
 
-/**
- * Run a write statement (INSERT/UPDATE/DELETE) and persist.
- */
 export async function run(
   sql: string,
   params: unknown[] = [],
@@ -170,11 +193,6 @@ export async function run(
   await persistDb();
 }
 
-/**
- * Run a write statement and return the number of rows affected.
- * Useful for `INSERT OR IGNORE` to detect whether the row was actually inserted
- * vs skipped due to a UNIQUE constraint.
- */
 export async function runWithChanges(
   sql: string,
   params: unknown[] = [],
@@ -182,6 +200,29 @@ export async function runWithChanges(
   const db = await getDb();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   db.run(sql, params as any);
+  const changes = db.getRowsModified();
   await persistDb();
-  return db.getRowsModified();
+  return changes;
+}
+
+/**
+ * Debug helper — returns table counts for the admin debug panel.
+ */
+export async function getDbStats(): Promise<Record<string, number>> {
+  try {
+    const tables = ['channels', 'raw_messages', 'jobs', 'user_preferences', 'user_interactions'];
+    const stats: Record<string, number> = {};
+    for (const t of tables) {
+      try {
+        const rows = await queryAll<{ c: number }>(`SELECT COUNT(*) as c FROM ${t}`);
+        stats[t] = rows[0]?.c ?? 0;
+      } catch {
+        stats[t] = -1; // table doesn't exist
+      }
+    }
+    return stats;
+  } catch (err) {
+    console.error('[db] getDbStats failed:', err);
+    return { error: (err as Error).message };
+  }
 }

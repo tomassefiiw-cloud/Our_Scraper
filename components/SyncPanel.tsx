@@ -13,12 +13,12 @@ export default function SyncPanel() {
     setRunning(true);
     setProgress(`Syncing ${username}…`);
     try {
+      const cfg = CHANNEL_CONFIGS.find((c) => c.telegram_username === username);
       const result = await syncChannel(username, {
-        lookbackHours: CHANNEL_CONFIGS.find((c) => c.telegram_username === username)?.lookbackHours,
-        skipPatterns: CHANNEL_CONFIGS.find((c) => c.telegram_username === username)?.skipPatterns,
+        skipPatterns: cfg?.skipPatterns,
       });
       setResults((prev) => [result, ...prev]);
-      setProgress(`Done ${username}: ${result.jobsExtracted} jobs, ${result.jobsDuplicates} dupes`);
+      setProgress(`Done ${username}: ${result.jobsExtracted} jobs, ${result.jobsDuplicates} dupes, ${result.errors.length} errors`);
     } catch (err) {
       setProgress(`Error: ${(err as Error).message}`);
     } finally {
@@ -33,7 +33,6 @@ export default function SyncPanel() {
       setProgress(`Syncing ${c.telegram_username}…`);
       try {
         const result = await syncChannel(c.telegram_username, {
-          lookbackHours: c.lookbackHours,
           skipPatterns: c.skipPatterns,
         });
         setResults((prev) => [...prev, result]);
