@@ -4,8 +4,8 @@
  */
 import { prisma } from '@tja/db';
 import { FilterEngine } from '@tja/filter';
-import { makeWorker, notifyQueue } from './queues.js';
-import { scrapeChannel } from './pipeline.js';
+import { makeWorker, notifyQueue } from '../queues.js';
+import { scrapeChannel } from '../pipeline.js';
 
 const filter = new FilterEngine();
 

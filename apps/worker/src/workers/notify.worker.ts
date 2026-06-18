@@ -3,7 +3,7 @@
  */
 import webpush from 'web-push';
 import { prisma } from '@tja/db';
-import { makeWorker } from './queues.js';
+import { makeWorker } from '../queues.js';
 
 // Configure VAPID
 if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
