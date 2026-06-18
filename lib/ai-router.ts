@@ -328,6 +328,7 @@ function isValidGeminiKey(key: string): boolean {
 function loadProviders(): ProviderRuntime[] {
   if (providersCache) return providersCache;
   const providers: ProviderRuntime[] = [];
+  let priority = 0;
 
   // ===== GEMINI =====
   // Collect ALL Gemini keys from env: GEMINI_API_KEY, GEMINI_API_KEY_2, ... _10
