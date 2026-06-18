@@ -9,6 +9,7 @@
     "generate": "prisma generate",
     "migrate": "prisma migrate dev",
     "migrate:deploy": "prisma migrate deploy",
+    "migrate:fts": "prisma db execute --file prisma/fts.sql --schema prisma/schema.prisma",
     "seed": "tsx prisma/seed.ts",
     "studio": "prisma studio",
     "typecheck": "tsc --noEmit"

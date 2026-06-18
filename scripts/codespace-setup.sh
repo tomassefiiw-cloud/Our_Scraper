@@ -40,8 +40,11 @@ done
 echo "==> Generating Prisma client"
 pnpm db:generate
 
-echo "==> Running Prisma migrations"
-pnpm db:migrate
+echo "==> Loading .env into shell"
+set -a && source .env && set +a
+
+echo "==> Running Prisma migrations (auto-generated) + FTS trigger"
+DATABASE_URL="${DATABASE_URL}" DIRECT_URL="${DIRECT_URL}" pnpm db:migrate
 
 echo "==> Seeding channels + AI provider configs from env"
 pnpm db:seed || echo "    (seed partial — set AI API keys as Codespace secrets and re-run: pnpm db:seed)"

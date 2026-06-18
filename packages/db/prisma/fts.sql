@@ -1,7 +1,6 @@
 -- =============================================================================
--- Migration: init
--- Adds full-text search support (TSVECTOR) and trigger, mirroring §5 schema.
--- Prisma doesn't natively model TSVECTOR, so we add it via raw SQL.
+-- Full-text search support for the jobs table (doc §5).
+-- Applied via `prisma db execute` after the main Prisma migration.
 -- =============================================================================
 
 -- Full-text search vector on jobs
