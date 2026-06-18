@@ -408,11 +408,14 @@ function loadProviders(): ProviderRuntime[] {
     );
   }
   if (env.OPENROUTER_API_KEY) {
-    console.log(`[ai-router] openrouter: key loaded (model: ${env.OPENROUTER_MODEL || 'google/gemini-flash-1.5'})`);
+    // Default to a free model — meta-llama/llama-3.1-8b-instruct:free is free on OpenRouter
+    // Other good free options: google/gemini-2.0-flash-exp:free, mistralai/mistral-7b-instruct:free
+    const defaultOpenRouterModel = 'meta-llama/llama-3.1-8b-instruct:free';
+    console.log(`[ai-router] openrouter: key loaded (model: ${env.OPENROUTER_MODEL || defaultOpenRouterModel})`);
     providers.push(
       makeOpenAICompatible(
         'openrouter', priority++, env.OPENROUTER_API_KEY,
-        env.OPENROUTER_MODEL || 'google/gemini-flash-1.5',
+        env.OPENROUTER_MODEL || defaultOpenRouterModel,
         'https://openrouter.ai/api/v1', 20,
         { 'HTTP-Referer': 'https://tja.local', 'X-Title': 'Telegram Job Aggregator' },
       ),
