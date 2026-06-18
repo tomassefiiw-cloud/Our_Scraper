@@ -98,13 +98,18 @@ function makeOpenAICompatible(
 }
 
 function makeGemini(priority: number, apiKey: string, model: string): ProviderRuntime {
+  // Fallback chain — if the primary model 404s (deprecated), try alternatives.
+  // Google has renamed/deprecated models multiple times; this makes us resilient.
+  // De-duplicate in case the user's configured model is already in the fallback list.
+  const fallbacks = ['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-flash-latest', 'gemini-1.5-flash'];
+  const modelFallbacks = [model, ...fallbacks.filter((m) => m !== model)];
+
   return {
     name: 'gemini',
     priority,
     isLocal: false,
     rpm: 15,
     async call(params) {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
       const body: Record<string, unknown> = {
         contents: [{ role: 'user', parts: [{ text: params.prompt }] }],
         generationConfig: {
@@ -116,24 +121,43 @@ function makeGemini(priority: number, apiKey: string, model: string): ProviderRu
       if (params.systemPrompt) {
         body.systemInstruction = { parts: [{ text: params.systemPrompt }] };
       }
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) {
+
+      let lastError: Error | null = null;
+      for (const m of modelFallbacks) {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${apiKey}`;
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        if (res.ok) {
+          const data = (await res.json()) as {
+            candidates?: { content?: { parts?: { text?: string }[] } }[];
+            error?: { message?: string };
+          };
+          if (data.error) {
+            lastError = new Error(`Gemini ${m}: ${data.error.message}`);
+            continue;
+          }
+          console.log(`[ai-router] gemini success with model: ${m}`);
+          return {
+            content: data.candidates?.[0]?.content?.parts?.[0]?.text ?? '',
+            provider: 'gemini',
+          };
+        }
+        // 404 = model not found, try next fallback
+        // 400 = bad request (often model-specific), try next fallback
+        // Other errors (401/429/500) = real failures, throw immediately
+        if (res.status === 404 || res.status === 400) {
+          const text = await res.text();
+          console.warn(`[ai-router] gemini model ${m} failed ${res.status}, trying next fallback`);
+          lastError = new Error(`Gemini ${m} ${res.status}: ${text.slice(0, 100)}`);
+          continue;
+        }
         const text = await res.text();
-        throw new Error(`Gemini API ${res.status}: ${text.slice(0, 200)}`);
+        throw new Error(`Gemini ${m} API ${res.status}: ${text.slice(0, 200)}`);
       }
-      const data = (await res.json()) as {
-        candidates?: { content?: { parts?: { text?: string }[] } }[];
-        error?: { message?: string };
-      };
-      if (data.error) throw new Error(`Gemini: ${data.error.message}`);
-      return {
-        content: data.candidates?.[0]?.content?.parts?.[0]?.text ?? '',
-        provider: 'gemini',
-      };
+      throw lastError ?? new Error('Gemini: all model fallbacks exhausted');
     },
   };
 }
@@ -232,7 +256,9 @@ function loadProviders(): ProviderRuntime[] {
   let priority = 0;
 
   if (env.GEMINI_API_KEY) {
-    providers.push(makeGemini(priority++, env.GEMINI_API_KEY, env.GEMINI_MODEL || 'gemini-1.5-flash-latest'));
+    // Default to gemini-2.0-flash (current free-tier model as of 2026).
+    // The old 'gemini-1.5-flash-latest' was deprecated and returns 404.
+    providers.push(makeGemini(priority++, env.GEMINI_API_KEY, env.GEMINI_MODEL || 'gemini-2.0-flash'));
   }
   if (env.GROQ_API_KEY) {
     providers.push(
