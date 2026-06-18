@@ -388,6 +388,7 @@ function loadProviders(): ProviderRuntime[] {
 
   // ===== GROQ =====
   if (env.GROQ_API_KEY) {
+    console.log(`[ai-router] groq: key loaded (model: ${env.GROQ_MODEL || 'llama-3.1-8b-instant'})`);
     providers.push(
       makeOpenAICompatible(
         'groq', priority++, env.GROQ_API_KEY,
@@ -397,6 +398,7 @@ function loadProviders(): ProviderRuntime[] {
     );
   }
   if (env.DEEPSEEK_API_KEY) {
+    console.log(`[ai-router] deepseek: key loaded (model: ${env.DEEPSEEK_MODEL || 'deepseek-chat'})`);
     providers.push(
       makeOpenAICompatible(
         'deepseek', priority++, env.DEEPSEEK_API_KEY,
@@ -406,6 +408,7 @@ function loadProviders(): ProviderRuntime[] {
     );
   }
   if (env.OPENROUTER_API_KEY) {
+    console.log(`[ai-router] openrouter: key loaded (model: ${env.OPENROUTER_MODEL || 'google/gemini-flash-1.5'})`);
     providers.push(
       makeOpenAICompatible(
         'openrouter', priority++, env.OPENROUTER_API_KEY,
@@ -416,6 +419,7 @@ function loadProviders(): ProviderRuntime[] {
     );
   }
   if (env.KIMI_API_KEY) {
+    console.log(`[ai-router] kimi: key loaded (model: ${env.KIMI_MODEL || 'moonshot-v1-8k'})`);
     providers.push(
       makeOpenAICompatible(
         'kimi', priority++, env.KIMI_API_KEY,
@@ -425,6 +429,7 @@ function loadProviders(): ProviderRuntime[] {
     );
   }
   if (env.OPENAI_API_KEY) {
+    console.log(`[ai-router] openai: key loaded (model: ${env.OPENAI_MODEL || 'gpt-3.5-turbo'})`);
     providers.push(
       makeOpenAICompatible(
         'openai', priority++, env.OPENAI_API_KEY,
@@ -434,10 +439,12 @@ function loadProviders(): ProviderRuntime[] {
     );
   }
   if (env.CLAUDE_API_KEY) {
+    console.log(`[ai-router] claude: key loaded (model: ${env.CLAUDE_MODEL || 'claude-3-haiku-20240307'})`);
     providers.push(makeClaude(priority++, env.CLAUDE_API_KEY, env.CLAUDE_MODEL || 'claude-3-haiku-20240307'));
   }
   // Ollama is always last (local fallback, no key needed)
   if (env.OLLAMA_URL || env.OLLAMA_MODEL) {
+    console.log(`[ai-router] ollama: configured (model: ${env.OLLAMA_MODEL || 'phi4:latest'}, url: ${env.OLLAMA_URL || 'http://localhost:11434'})`);
     providers.push(makeOllama(priority++, env.OLLAMA_MODEL || 'phi4:latest', env.OLLAMA_URL || 'http://localhost:11434'));
   }
 
