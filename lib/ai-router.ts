@@ -493,11 +493,24 @@ export async function complete(params: AICompletionParams): Promise<AICompletion
       errors.push({ provider: p.name, error: msg });
       console.error(`[ai-router] ${p.name} failed:`, msg);
 
-      // Circuit breaker: if the error is a hard 403 (region block) or 401 (invalid key),
-      // disable this provider for the rest of the session.
-      // We detect this by checking the error message for these status codes.
-      if (msg.includes(' 403:') || msg.includes(' 401:') || msg.includes('Forbidden') || msg.includes('Unauthorized')) {
-        console.warn(`[ai-router] ${p.name} disabled for this session (circuit breaker)`);
+      // Circuit breaker: disable this provider for the rest of the session if it
+      // failed with a hard error that won't recover on retry:
+      //   - 403 Forbidden         → region block (Groq, OpenAI, Claude from blocked regions)
+      //   - 401 Unauthorized       → invalid/revoked key
+      //   - 429 with "limit: 0"    → region-blocked quota (Gemini from blocked regions —
+      //                              Google sets quota to 0 instead of returning 403)
+      //   - "all N keys have exhausted their daily quota" → Gemini multi-key exhaustion
+      //
+      // We DON'T disable on transient 429 (rate limit) without "limit: 0" — those recover.
+      const isHardError =
+        msg.includes(' 403:') ||
+        msg.includes(' 401:') ||
+        msg.includes('Forbidden') ||
+        msg.includes('Unauthorized') ||
+        msg.includes('limit: 0') ||
+        /all \d+ keys have exhausted/.test(msg);
+      if (isHardError) {
+        console.warn(`[ai-router] ${p.name} disabled for this session (circuit breaker: ${msg.slice(0, 80)})`);
         disabledProviders.add(p.name);
       }
     }
