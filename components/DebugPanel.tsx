@@ -27,8 +27,8 @@ interface AiTestResult {
   provider?: string;
   response?: string;
   error?: string;
-  geminiKeyCount?: number;
   providers?: string[];
+  disabledProviders?: string[];
 }
 
 export default function DebugPanel() {
@@ -81,19 +81,18 @@ export default function DebugPanel() {
     try {
       const res = await fetch('/api/debug?test=1');
       const data = await res.json();
-      const geminiKeyCount = data.envStatus?.GEMINI_KEY_COUNT ?? 0;
       setAiTest({
         ok: data.test?.ok ?? false,
         provider: data.test?.provider,
         response: data.test?.response,
         error: data.test?.error,
-        geminiKeyCount,
         providers: data.providers,
+        disabledProviders: data.disabledProviders ?? [],
       });
       setMsg(
         data.test?.ok
-          ? `✓ AI works (${data.test.provider}) — ${geminiKeyCount} Gemini key(s) loaded`
-          : `✗ AI failed: ${data.test?.error ?? 'unknown'} — ${geminiKeyCount} Gemini key(s) loaded`,
+          ? `✓ AI works (${data.test.provider}) — ${data.providers?.length ?? 0} provider(s) active`
+          : `✗ AI failed: ${data.test?.error ?? 'unknown'}`,
       );
     } catch (err) {
       setAiTest({ ok: false, error: (err as Error).message });
@@ -195,20 +194,24 @@ export default function DebugPanel() {
             {aiTest.ok ? (
               <>
                 <p><strong>✓ Works</strong> (provider: {aiTest.provider})</p>
-                <p className="mt-1">Providers configured: {aiTest.providers?.join(', ')}</p>
-                <p className="mt-1">Gemini keys loaded: <strong>{aiTest.geminiKeyCount}</strong></p>
-                {aiTest.geminiKeyCount && aiTest.geminiKeyCount > 1 && (
-                  <p className="text-[10px] mt-1 text-green-700">→ Load balancing enabled ({aiTest.geminiKeyCount} × 1500 = {aiTest.geminiKeyCount * 1500} req/day)</p>
+                <p className="mt-1">Active providers: {aiTest.providers?.join(', ') || 'none'}</p>
+                {aiTest.disabledProviders && aiTest.disabledProviders.length > 0 && (
+                  <p className="mt-1 text-orange-700">Disabled (circuit breaker): {aiTest.disabledProviders.join(', ')}</p>
                 )}
                 <p className="font-mono text-[10px] mt-1 break-all text-gray-600">Response: {aiTest.response}</p>
               </>
             ) : (
               <>
                 <p><strong>✗ Failed:</strong> {aiTest.error}</p>
-                <p className="mt-1">Providers configured: {aiTest.providers?.join(', ') || 'none'}</p>
-                <p className="mt-1">Gemini keys loaded: <strong>{aiTest.geminiKeyCount ?? 0}</strong></p>
-                {aiTest.geminiKeyCount === 0 && (
-                  <p className="text-[10px] mt-1 text-red-700">→ No Gemini keys! Add GEMINI_API_KEY to .env and restart dev server.</p>
+                <p className="mt-1">Active providers: {aiTest.providers?.join(', ') || 'none'}</p>
+                {aiTest.disabledProviders && aiTest.disabledProviders.length > 0 && (
+                  <p className="mt-1 text-orange-700">Disabled (circuit breaker): {aiTest.disabledProviders.join(', ')}</p>
+                )}
+                {(!aiTest.providers || aiTest.providers.length === 0) && (
+                  <p className="text-[10px] mt-1 text-red-700">
+                    → No active providers! Add a key to .env (DEEPSEEK_API_KEY recommended)
+                    and restart dev server.
+                  </p>
                 )}
               </>
             )}

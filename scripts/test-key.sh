@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Test an AI provider key before adding it to .env
 # Usage:
-#   bash scripts/test-key.sh openrouter sk-or-v1-...
 #   bash scripts/test-key.sh deepseek sk-...
-#   bash scripts/test-key.sh groq gsk_...
-#   bash scripts/test-key.sh gemini AIza...
+#   bash scripts/test-key.sh mistral xxx...
+#   bash scripts/test-key.sh openrouter sk-or-v1-...
+#   bash scripts/test-key.sh kimi sk-...
 set -euo pipefail
 
 PROVIDER="${1:-}"
@@ -13,12 +13,12 @@ KEY="${2:-}"
 if [ -z "$PROVIDER" ] || [ -z "$KEY" ]; then
   echo "Usage: bash scripts/test-key.sh <provider> <key>"
   echo ""
-  echo "Providers: openrouter, deepseek, groq, gemini, openai, claude"
+  echo "Providers: deepseek, mistral, openrouter, kimi"
   echo ""
   echo "Examples:"
-  echo "  bash scripts/test-key.sh openrouter sk-or-v1-abc123..."
   echo "  bash scripts/test-key.sh deepseek sk-abc123..."
-  echo "  bash scripts/test-key.sh groq gsk_abc123..."
+  echo "  bash scripts/test-key.sh mistral abc123..."
+  echo "  bash scripts/test-key.sh openrouter sk-or-v1-abc123..."
   exit 1
 fi
 
@@ -28,53 +28,33 @@ echo "================================================================"
 echo ""
 
 case "$PROVIDER" in
-  openrouter)
-    URL="https://openrouter.ai/api/v1/chat/completions"
-    MODEL="nvidia/nemotron-3-nano-30b-a3b:free"
-    AUTH="Authorization: Bearer $KEY"
-    EXTRA='-H "HTTP-Referer: https://tja.local" -H "X-Title: Telegram Job Aggregator"'
-    ;;
   deepseek)
     URL="https://api.deepseek.com/v1/chat/completions"
     MODEL="deepseek-chat"
     AUTH="Authorization: Bearer $KEY"
     EXTRA=""
     ;;
-  groq)
-    URL="https://api.groq.com/openai/v1/chat/completions"
-    MODEL="llama-3.1-8b-instant"
+  mistral)
+    URL="https://api.mistral.ai/v1/chat/completions"
+    MODEL="mistral-small-latest"
     AUTH="Authorization: Bearer $KEY"
     EXTRA=""
     ;;
-  gemini)
-    echo "Testing Gemini listModels (lighter auth check)..."
-    curl -sS "https://generativelanguage.googleapis.com/v1beta/models?key=$KEY" | head -c 800
-    echo ""
-    echo ""
-    echo "Testing Gemini generateContent..."
-    curl -sS -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=$KEY" \
-      -H "Content-Type: application/json" \
-      -d '{"contents":[{"parts":[{"text":"Say hello"}]}]}' | head -c 800
-    exit 0
+  openrouter)
+    URL="https://openrouter.ai/api/v1/chat/completions"
+    MODEL="nvidia/nemotron-3-nano-30b-a3b:free"
+    AUTH="Authorization: Bearer $KEY"
+    EXTRA='-H "HTTP-Referer: https://tja.local" -H "X-Title: Telegram Job Aggregator"'
     ;;
-  openai)
-    URL="https://api.openai.com/v1/chat/completions"
-    MODEL="gpt-3.5-turbo"
+  kimi)
+    URL="https://api.moonshot.cn/v1/chat/completions"
+    MODEL="moonshot-v1-8k"
     AUTH="Authorization: Bearer $KEY"
     EXTRA=""
-    ;;
-  claude)
-    echo "Testing Claude..."
-    curl -sS -X POST "https://api.anthropic.com/v1/messages" \
-      -H "x-api-key: $KEY" \
-      -H "anthropic-version: 2023-06-01" \
-      -H "Content-Type: application/json" \
-      -d '{"model":"claude-3-haiku-20240307","max_tokens":50,"messages":[{"role":"user","content":"hi"}]}' | head -c 800
-    exit 0
     ;;
   *)
     echo "Unknown provider: $PROVIDER"
-    echo "Valid: openrouter, deepseek, groq, gemini, openai, claude"
+    echo "Valid: deepseek, mistral, openrouter, kimi"
     exit 1
     ;;
 esac
@@ -95,6 +75,6 @@ echo "================================================================"
 echo "Interpretation:"
 echo "  - 200 + JSON with 'choices' → ✓ key works"
 echo "  - 401 Unauthorized           → key is invalid or revoked"
-echo "  - 403 Forbidden              → region-blocked (try OpenRouter instead)"
+echo "  - 403 Forbidden              → region-blocked (try DeepSeek instead)"
 echo "  - 429 Too Many Requests      → quota exceeded, key works but rate-limited"
 echo "================================================================"

@@ -7,7 +7,7 @@
 
 A Progressive Web App that:
 1. Scrapes 12 Ethiopian Telegram job channels every time you tap "Sync" (via the public `t.me/s/<channel>` webview, server-side fetch to bypass CORS)
-2. Uses LLMs (Gemini, Groq, DeepSeek, etc. — you bring the key) to extract structured job data from messy Amharic/English posts
+2. Uses LLMs (DeepSeek, Mistral, etc. — you bring the key) to extract structured job data from messy Amharic/English posts
 3. Deduplicates across channels (3-layer: exact link → company+title Jaccard → semantic-ish)
 4. Filters by your preferences (experience, location, categories, **exclude keywords**, etc.)
 5. Stores everything in **SQLite running in your browser** via `sql.js` (WASM), persisted to IndexedDB
@@ -49,18 +49,18 @@ A Progressive Web App that:
 1. Go to https://github.com/tomassefiiw-cloud/Our_Scraper
 2. **Code** → **Codespaces** → **Create codespace on main**
 3. Wait for `postinstall` to copy `sql-wasm.wasm` into `/public`
-4. Get a free Gemini API key at https://aistudio.google.com/apikey
+4. Get a free **DeepSeek** API key at https://platform.deepseek.com (new users get $5.50 free credit — ~37K requests). Works globally, no region blocks.
 5. In the codespace, create `.env`:
    ```bash
-   cp .env.example .env
-   # Edit .env: paste your Gemini key after GEMINI_API_KEY=
+   bash scripts/setup-env.sh
+   # Follow the prompts to paste your DeepSeek key
    ```
 6. Run:
    ```bash
    npm run dev
    ```
 7. Codespace shows a forwarded port `3000` — click the URL. The PWA opens.
-8. Tap **Admin** → **Sync all 12 channels**. Wait ~2-3 min. Jobs appear.
+8. Tap **Admin** → **Sync all 12 channels**. Wait ~10-15 min. Jobs appear.
 
 ## Quick Start (Local)
 
@@ -79,16 +79,16 @@ Only AI provider keys are needed (server-side only). Set at least one:
 
 | Variable | Free tier | Notes |
 |---|---|---|
-| `GEMINI_API_KEY` | 15 RPM, 1500/day | Recommended — get free at https://aistudio.google.com/apikey |
-| `GROQ_API_KEY` | 20 RPM, 14400/day | Fastest — get free at https://console.groq.com |
-| `DEEPSEEK_API_KEY` | 10 RPM, 10K tok/day | https://platform.deepseek.com |
-| `OPENROUTER_API_KEY` | varies | Aggregator — https://openrouter.ai |
-| `KIMI_API_KEY` | 10 RPM, 1000/day | https://platform.moonshot.cn |
-| `OPENAI_API_KEY` | 3 RPM, 200/day | Last resort |
-| `CLAUDE_API_KEY` | 5 RPM, 100/day | Very restrictive |
+| `DEEPSEEK_API_KEY` | **$5.50 free credit (~37K requests)** | **Recommended** — works globally, no region blocks. Get key at https://platform.deepseek.com |
+| `MISTRAL_API_KEY` | Free tier (rate-limited, no daily cap) | Works globally. Get key at https://console.mistral.ai |
+| `OPENROUTER_API_KEY` | 50 req/day on free tier | Aggregator — use only as backup. Get key at https://openrouter.ai |
+| `KIMI_API_KEY` | varies | Chinese provider. Get key at https://platform.moonshot.cn |
 | `OLLAMA_URL` + `OLLAMA_MODEL` | unlimited | Local fallback (requires running Ollama locally) |
 
-The router tries providers in the order listed above; rate-limited providers are skipped.
+**Why not Gemini / Groq / OpenAI / Claude?**
+These providers are region-blocked in many areas (Ethiopia, etc.) — they return 403 Forbidden or quota=0 even with a valid key. DeepSeek and Mistral work globally and have generous free tiers.
+
+The router tries providers in this order: DeepSeek → Mistral → OpenRouter → Kimi → Ollama. Providers that fail with hard errors (403/401/quota exhausted) are auto-disabled for the session via a circuit breaker.
 
 ## Channels (12)
 
@@ -170,7 +170,7 @@ Configs are in `lib/channels.ts`.
 
 1. Push to GitHub
 2. Import the repo at https://vercel.com/new
-3. Set environment variables (at least `GEMINI_API_KEY`)
+3. Set environment variables (at least `DEEPSEEK_API_KEY`)
 4. Deploy — Vercel auto-detects Next.js, runs `npm install` (which triggers `postinstall` to copy `sql-wasm.wasm`), then `npm run build`
 5. Visit the deployed URL — open the PWA, sync, install to home screen
 
