@@ -3,9 +3,9 @@ node_modules/
 .pnpm-store/
 
 # Build outputs
-dist/
 .next/
-build/
+out/
+dist/
 *.tsbuildinfo
 
 # Environment
@@ -25,23 +25,15 @@ pnpm-debug.log*
 .idea/
 *.swp
 
-# Prisma
-packages/db/prisma/migrations/dev.db*
-
 # Cache
 .turbo/
 .cache/
 
-# Puppeteer
-.cache-puppeteer/
-
-# PWA generated
-apps/web/public/sw.js
-apps/web/public/workbox-*.js
-apps/web/public/workbox-*.js.map
-apps/web/public/fallback-*.js
-
-# Credentials - NEVER commit
+# Credentials
 .git-credentials
 *.pem
 *.key
+
+# Local SQLite DB (if any tool writes one locally for testing)
+*.sqlite
+*.db
