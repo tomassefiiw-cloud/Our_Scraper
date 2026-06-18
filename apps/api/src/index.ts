@@ -20,6 +20,11 @@ import { authOptional } from './middleware/auth.js';
 
 const app = express();
 
+// Trust proxy — Codespaces port-forwarding and Next.js rewrites both add
+// X-Forwarded-* headers. Without this, express-rate-limit throws
+// ERR_ERL_UNEXPECTED_X_FORWARDED_FOR on every proxied request.
+app.set('trust proxy', 2);
+
 // ---- Middleware ----------------------------------------------------------
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: '1mb' }));
