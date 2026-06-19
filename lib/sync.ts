@@ -74,7 +74,7 @@ export async function syncChannel(
           await run(
             `INSERT INTO raw_messages
                (channel_username, telegram_msg_id, message_text, message_html, posted_at, views, extracted_links_json, status)
-             VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
+             VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')`,
             [msg.channel_username, msg.telegram_msg_id, msg.message_text, msg.message_html,
              msg.posted_at, msg.views, JSON.stringify(msg.extracted_links)],
           );
@@ -213,7 +213,7 @@ async function extractSingleMessage(
               salary_min_etb, salary_max_etb, description, requirements_json, responsibilities_json,
               how_to_apply, application_link, application_email, deadline, is_closed, is_vague,
               source_url, ai_provider_used, ai_confidence, extraction_method, posted_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             jobId, raw.id, channelUsername,
             job.title, job.title_amharic, job.company_name, job.company_name_amharic,
