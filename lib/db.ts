@@ -20,7 +20,7 @@ let initPromise: Promise<Database> | null = null;
 
 const DB_STORAGE_KEY = 'tja-sqlite-db';
 const SCHEMA_VERSION_KEY = 'tja-schema-version';
-const CURRENT_SCHEMA_VERSION = '4'; // bumped — old DBs with stale pending messages get re-created
+const CURRENT_SCHEMA_VERSION = '5'; // bumped — old DBs with stale pending messages get re-created
 
 async function loadSqlJs(): Promise<SqlJsStatic> {
   if (SQL) return SQL;
@@ -85,6 +85,19 @@ function ensureSchema(db: Database): void {
         console.log('[db] v4 migration: reset raw_messages status to pending');
       } catch (err) {
         console.warn('[db] v4 migration failed:', err);
+      }
+    }
+    // v5 migration: add job_categories_json column for multi-category filtering
+    if (storedVersion < '5') {
+      try {
+        const tableInfo = db.exec("PRAGMA table_info(jobs)");
+        const hasColumn = tableInfo[0]?.values?.some((row: unknown[]) => row[1] === 'job_categories_json');
+        if (!hasColumn) {
+          db.run("ALTER TABLE jobs ADD COLUMN job_categories_json TEXT DEFAULT '[]'");
+          console.log('[db] v5 migration: added job_categories_json column to jobs');
+        }
+      } catch (err) {
+        console.warn('[db] v5 migration failed:', err);
       }
     }
     if (typeof localStorage !== 'undefined') {
