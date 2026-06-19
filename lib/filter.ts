@@ -51,9 +51,12 @@ export function matches(job: ExtractedJob, prefs: UserPreferences): boolean {
     return false;
   }
 
-  // Job category
-  if (prefs.job_categories.length > 0 && job.job_category) {
-    if (!prefs.job_categories.includes(job.job_category)) return false;
+  // Job category — check ANY of the job's categories against user preferences
+  if (prefs.job_categories.length > 0) {
+    const jobCats = (job as unknown as Record<string, unknown>).job_categories as string[] 
+      ?? (job.job_category ? [job.job_category] : []);
+    const matchesAny = jobCats.some((cat: string) => prefs.job_categories.includes(cat));
+    if (!matchesAny) return false;
   }
 
   // Location

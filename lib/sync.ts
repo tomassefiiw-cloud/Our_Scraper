@@ -74,7 +74,7 @@ export async function syncChannel(
           await run(
             `INSERT INTO raw_messages
                (channel_username, telegram_msg_id, message_text, message_html, posted_at, views, extracted_links_json, status)
-             VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')`,
+             VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
             [msg.channel_username, msg.telegram_msg_id, msg.message_text, msg.message_html,
              msg.posted_at, msg.views, JSON.stringify(msg.extracted_links)],
           );
@@ -208,7 +208,7 @@ async function extractSingleMessage(
         await run(
           `INSERT INTO jobs
              (id, raw_message_id, channel_username, title, title_amharic, company_name, company_name_amharic,
-              job_category, employment_type, work_type, min_experience_years, max_experience_years,
+              job_category, job_categories_json, employment_type, work_type, min_experience_years, max_experience_years,
               experience_text, location, location_city, location_area, is_remote, salary_text,
               salary_min_etb, salary_max_etb, description, requirements_json, responsibilities_json,
               how_to_apply, application_link, application_email, deadline, is_closed, is_vague,
@@ -217,7 +217,9 @@ async function extractSingleMessage(
           [
             jobId, raw.id, channelUsername,
             job.title, job.title_amharic, job.company_name, job.company_name_amharic,
-            job.job_category, job.employment_type, job.work_type,
+            job.job_category,
+            JSON.stringify((job as unknown as Record<string, unknown>).job_categories ?? [job.job_category]),
+            job.employment_type, job.work_type,
             job.min_experience_years, job.max_experience_years, job.experience_text,
             job.location, job.location_city, job.location_area,
             job.is_remote ? 1 : 0,

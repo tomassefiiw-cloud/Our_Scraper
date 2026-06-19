@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS jobs (
   company_name TEXT,
   company_name_amharic TEXT,
   job_category TEXT,
+  job_categories_json TEXT DEFAULT '[]',
   employment_type TEXT,
   work_type TEXT,
   min_experience_years INTEGER,
@@ -113,6 +114,7 @@ export interface JobRow {
   company_name: string | null;
   company_name_amharic: string | null;
   job_category: string | null;
+  job_categories_json: string;
   employment_type: string | null;
   work_type: string | null;
   min_experience_years: number | null;

@@ -8,6 +8,7 @@ export interface Job {
   titleAmharic: string | null;
   companyName: string | null;
   jobCategory: string | null;
+  jobCategories?: string[];
   employmentType: string | null;
   workType: string | null;
   minExperienceYears: number | null;
@@ -58,9 +59,9 @@ export default function JobCard({ job }: { job: Job }) {
         {job.employmentType && (
           <span className="bg-gray-100 px-2 py-0.5 rounded">💼 {job.employmentType}</span>
         )}
-        {job.jobCategory && (
-          <span className="bg-gray-100 px-2 py-0.5 rounded">🏷️ {job.jobCategory}</span>
-        )}
+        {(job.jobCategories && job.jobCategories.length > 0 ? job.jobCategories : [job.jobCategory].filter(Boolean)).map((cat) => (
+          <span key={cat} className="bg-gray-100 px-2 py-0.5 rounded">🏷️ {cat}</span>
+        ))}
         {job.minExperienceYears !== null && (
           <span className="bg-gray-100 px-2 py-0.5 rounded">
             ⏳ {job.minExperienceYears}

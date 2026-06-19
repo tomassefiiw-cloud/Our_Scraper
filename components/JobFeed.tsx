@@ -49,24 +49,31 @@ export default function JobFeed() {
       const rows = await queryAll<JobRow>(
         `SELECT * FROM jobs WHERE is_closed = 0 ORDER BY posted_at DESC LIMIT 200`,
       );
-      const mapped: Job[] = rows.map((r) => ({
-        id: r.id,
-        title: r.title,
-        titleAmharic: r.title_amharic,
-        companyName: r.company_name,
-        jobCategory: r.job_category,
-        employmentType: r.employment_type,
-        workType: r.work_type,
-        minExperienceYears: r.min_experience_years,
-        maxExperienceYears: r.max_experience_years,
-        location: r.location,
-        locationCity: r.location_city,
-        isRemote: r.is_remote,
-        salaryText: r.salary_text,
-        deadline: r.deadline,
-        postedAt: r.posted_at,
-        channelUsername: r.channel_username,
-      }));
+      const mapped: Job[] = rows.map((r) => {
+        let jobCats: string[] = [];
+        try { jobCats = JSON.parse(r.job_categories_json || '[]'); } catch { jobCats = [r.job_category].filter((c): c is string => c !== null); }
+        if (jobCats.length === 0 && r.job_category) jobCats = [r.job_category];
+        if (jobCats.length === 0) jobCats = ['other'];
+        return {
+          id: r.id,
+          title: r.title,
+          titleAmharic: r.title_amharic,
+          companyName: r.company_name,
+          jobCategory: r.job_category,
+          jobCategories: jobCats,
+          employmentType: r.employment_type,
+          workType: r.work_type,
+          minExperienceYears: r.min_experience_years,
+          maxExperienceYears: r.max_experience_years,
+          location: r.location,
+          locationCity: r.location_city,
+          isRemote: r.is_remote,
+          salaryText: r.salary_text,
+          deadline: r.deadline,
+          postedAt: r.posted_at,
+          channelUsername: r.channel_username,
+        };
+      });
       setJobs(mapped);
     } catch (err) {
       setError((err as Error).message);
@@ -100,6 +107,7 @@ export default function JobFeed() {
           company_name: j.companyName,
           company_name_amharic: null,
           job_category: j.jobCategory,
+          job_categories: j.jobCategories ?? [],
           employment_type: j.employmentType,
           work_type: j.workType,
           min_experience_years: j.minExperienceYears,

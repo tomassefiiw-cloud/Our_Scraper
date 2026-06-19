@@ -12,6 +12,7 @@ export interface ExtractedJob {
   company_name: string | null;
   company_name_amharic: string | null;
   job_category: string | null;
+  job_categories: string[];
   employment_type: string | null;
   work_type: string | null;
   min_experience_years: number | null;
@@ -65,9 +66,10 @@ INSTRUCTIONS:
 5. For "deadline", parse to YYYY-MM-DD format. Ethiopian calendar dates: convert to Gregorian.
 6. For "location", normalize to: "Addis Ababa", "Jimma", "Hawassa", "Remote", etc.
 7. If the message mentions "Closed/Hired" or similar, mark is_closed: true.
-8. For "job_category", classify into ONE of: tech, health, finance, engineering, marketing, sales, admin, creative, ngo, education, logistics, hospitality, other.
-9. If salary is mentioned, extract numeric value in ETB.
-10. If the message says "various positions" with no details, set is_vague: true.
+8. For "job_category", classify into the PRIMARY category (one of: tech, health, finance, engineering, marketing, sales, admin, creative, ngo, education, logistics, hospitality, legal, hr, management, other).
+9. For "job_categories", list ALL applicable categories that apply to this job as an array.
+10. If salary is mentioned, extract numeric value in ETB.
+11. If the message says "various positions" with no details, set is_vague: true.
 
 OUTPUT FORMAT — JSON array of jobs:
 [
@@ -77,6 +79,7 @@ OUTPUT FORMAT — JSON array of jobs:
     "company_name": "string",
     "company_name_amharic": "string or null",
     "job_category": "string",
+    "job_categories": ["string", "string", ...],
     "employment_type": "full-time|part-time|contract|freelance|internship|null",
     "work_type": "remote|onsite|hybrid|null",
     "min_experience_years": number or null,
@@ -183,6 +186,7 @@ function coerceJob(raw: unknown): ExtractedJob | null {
     company_name: asString(r.company_name),
     company_name_amharic: asString(r.company_name_amharic),
     job_category: asString(r.job_category),
+    job_categories: asStringArray(r.job_categories ?? r.categories ?? []),
     employment_type: asString(r.employment_type),
     work_type: asString(r.work_type),
     min_experience_years: asNumber(r.min_experience_years),
