@@ -369,7 +369,7 @@ export function detectCategories(text: string): string[] {
   ];
 
   for (const [category, keywords] of checks) {
-    if (keywords.some(kw => lower.includes(kw))) {
+    if (keywords.some(kw => { const esc = kw.replace(/\//g, "\\/"); return kw.length <= 3 ? new RegExp("\\b" + esc + "\\b", "i").test(lower) : lower.includes(kw); })) {
       found.push(category);
     }
   }
