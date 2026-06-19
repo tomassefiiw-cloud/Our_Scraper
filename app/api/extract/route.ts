@@ -4,13 +4,8 @@
  * Body: { channel, message_text, links }
  * Response: { jobs: ExtractedJob[], provider: string }
  *
- * Strategy:
- *   1. Try AI provider (DeepSeek/Mistral/etc.) if configured — best quality
- *   2. Fall back to rule-based extractor (regex + heuristics) — zero cost, no API key
- *
- * The rule-based extractor handles the common Ethiopian Telegram job patterns
- * documented in §17 of the architecture doc. It's less accurate than an LLM
- * but 100% free and works offline.
+ * CRITICAL FIX: Always fall back to rule-based when AI returns 0 jobs
+ * or fails. The tiny Ollama model often returns empty arrays.
  */
 
 import { NextResponse } from 'next/server';
@@ -21,11 +16,13 @@ import { getChannelConfig } from '@/lib/channels';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-// Check if any AI provider is configured
 function hasAiProvider(): boolean {
   return !!(
+    process.env.GEMINI_API_KEY ||
     process.env.DEEPSEEK_API_KEY ||
     process.env.MISTRAL_API_KEY ||
+    process.env.GROQ_API_KEY ||
+    process.env.CEREBRAS_API_KEY ||
     process.env.OPENROUTER_API_KEY ||
     process.env.KIMI_API_KEY ||
     process.env.OLLAMA_URL
@@ -53,36 +50,51 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: `Unknown channel: ${channel}` }, { status: 404 });
   }
 
-  console.log(`[api/extract] channel=${channel}, text_len=${message_text.length}, links=${links?.length ?? 0}, ai_available=${hasAiProvider()}`);
+  console.log(`[api/extract] channel=${channel}, text_len=${message_text.length}, links=${links?.length ?? 0}`);
 
-  // Strategy 1: Try AI if a provider is configured
+  // Step 1: Try AI
+  let aiJobs: unknown[] = [];
+  let aiProvider = '';
   if (hasAiProvider()) {
     try {
       const result = await extractJobs(message_text, links ?? [], config);
-      console.log(`[api/extract] ✓ AI extracted ${result.jobs.length} jobs via ${result.provider}`);
-      return NextResponse.json({
-        jobs: result.jobs.map((j) => ({ ...j, _provider: result.provider })),
-        provider: result.provider,
-        extraction_method: 'ai',
-      });
+      console.log(`[api/extract] AI: ${result.jobs.length} jobs via ${result.provider}`);
+      if (result.jobs.length > 0) {
+        aiJobs = result.jobs.map((j) => ({ ...j, _provider: result.provider }));
+        aiProvider = result.provider;
+      }
     } catch (err) {
-      console.warn(`[api/extract] AI failed, falling back to rule-based: ${(err as Error).message}`);
-      // Fall through to rule-based
+      console.warn(`[api/extract] AI failed: ${(err as Error).message}`);
     }
   }
 
-  // Strategy 2: Rule-based extraction (zero cost, always works)
+  // Step 2: ALWAYS also run rule-based (it catches everything AI misses)
+  let ruleJobs: unknown[] = [];
   try {
-    const jobs = extractJobsRuleBased(message_text, links ?? [], channel);
-    console.log(`[api/extract] ✓ rule-based extracted ${jobs.length} jobs`);
-    return NextResponse.json({
-      jobs: jobs.map((j) => ({ ...j, _provider: 'rule-based' })),
-      provider: 'rule-based',
-      extraction_method: 'rule-based',
-    });
+    const rj = extractJobsRuleBased(message_text, links ?? [], channel);
+    ruleJobs = rj.map((j) => ({ ...j, _provider: 'rule-based' }));
+    console.log(`[api/extract] Rule-based: ${ruleJobs.length} jobs`);
   } catch (err) {
-    const msg = (err as Error).message;
-    console.error(`[api/extract] ✗ rule-based failed for channel=${channel}:`, msg);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    console.warn(`[api/extract] Rule-based failed:`, err);
   }
+
+  // Step 3: Merge — AI jobs first, then rule-based if title doesn't match
+  const aiTitles = new Set(aiJobs.map((j: unknown) => String((j as Record<string, unknown>).title ?? '').toLowerCase()));
+  const merged = [...aiJobs];
+  for (const rj of ruleJobs) {
+    const title = String((rj as Record<string, unknown>).title ?? '').toLowerCase();
+    if (title && !aiTitles.has(title)) {
+      merged.push(rj);
+    }
+  }
+
+  const provider = aiProvider ? (ruleJobs.length > 0 ? `${aiProvider}+rule` : aiProvider) : 'rule-based';
+
+  console.log(`[api/extract] → ${merged.length} total jobs (AI: ${aiJobs.length}, rule: ${ruleJobs.length})`);
+
+  return NextResponse.json({
+    jobs: merged,
+    provider,
+    extraction_method: provider,
+  });
 }
