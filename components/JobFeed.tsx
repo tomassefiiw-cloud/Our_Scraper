@@ -75,9 +75,17 @@ export default function JobFeed() {
     }
   }, []);
 
+  // Listen for sync completion events
+  useEffect(() => {
+    const handler = () => { void refresh(); };
+    window.addEventListener('jobs-synced', handler);
+    return () => window.removeEventListener('jobs-synced', handler);
+  }, [refresh]);
+
+  // Initial load
   useEffect(() => {
     void refresh();
-  }, [refresh]);
+  }, []);
 
   // Apply filters + prefs client-side
   useEffect(() => {

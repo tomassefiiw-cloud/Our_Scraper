@@ -79,7 +79,7 @@ export default function AdminPage() {
           Fetches latest messages from each Telegram channel, runs AI extraction, deduplicates,
           and stores in local SQLite. Uses server-side AI providers (keys never exposed to browser).
         </p>
-        <SyncPanel />
+        <SyncPanel onSyncComplete={refresh} />
       </section>
 
       {/* Debug */}
