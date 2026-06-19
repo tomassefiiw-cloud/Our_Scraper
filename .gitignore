@@ -37,3 +37,4 @@ pnpm-debug.log*
 # Local SQLite DB (if any tool writes one locally for testing)
 *.sqlite
 *.db
+.env.local

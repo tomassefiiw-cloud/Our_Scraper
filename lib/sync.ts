@@ -186,6 +186,7 @@ export async function syncChannel(
 
         const extractData = (await extractRes.json()) as {
           jobs: (ExtractedJob & { _provider: string })[];
+          provider: string;
         };
         const extractedJobs = extractData.jobs ?? [];
         console.log(`[sync] ${channelUsername}: msg ${raw.id} → ${extractedJobs.length} jobs (provider: ${extractData.provider})`);
@@ -361,6 +362,7 @@ async function extractPendingForChannel(channelUsername: string): Promise<SyncRe
 
         const extractData = (await extractRes.json()) as {
           jobs: (ExtractedJob & { _provider: string })[];
+          provider: string;
         };
         const extractedJobs = extractData.jobs ?? [];
 

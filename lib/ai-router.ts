@@ -1,29 +1,18 @@
 /**
- * Multi-provider AI router — v3, Gemini-free.
+ * Multi-provider AI router — v4, with Gemini now supported.
  *
- * Supports only providers that work globally (no region blocks):
- *   - DeepSeek (deepseek-chat) — generous free credit, works everywhere
- *   - Mistral (mistral-small-latest) — free tier, works everywhere
- *   - OpenRouter (nvidia/nemotron-3-nano-30b-a3b:free) — aggregator, but
- *     free tier limited to 50 req/day (use DeepSeek/Mistral instead)
- *   - Kimi (moonshot-v1-8k) — Chinese provider, may work in some regions
- *   - Ollama (local) — unlimited but requires local install
+ * Providers (in priority order):
+ *   Gemini   → DeepSeek → Mistral → OpenRouter → Kimi → Ollama
  *
- * NOT supported (region-blocked in many areas):
- *   - Gemini  (returns 429 limit:0 in blocked regions)
- *   - Groq    (returns 403 Forbidden via Cloudflare edge)
- *   - OpenAI  (returns 403 Forbidden via Cloudflare edge)
- *   - Claude  (returns 403 Forbidden via Cloudflare edge)
- *
- * Provider priority order (first tried first):
- *   DeepSeek → Mistral → OpenRouter → Kimi → Ollama
+ * Gemini uses the Google AI API (generativelanguage.googleapis.com).
+ * Set GEMINI_API_KEY in .env.local — works globally, generous free tier.
  *
  * Circuit breaker: providers that fail with hard errors (403/401/quota exhausted)
  * get auto-disabled for the session, so we don't waste time retrying them.
  */
 
 export type AIProviderName =
-  | 'deepseek' | 'mistral' | 'openrouter' | 'kimi' | 'ollama';
+  | 'gemini' | 'deepseek' | 'mistral' | 'openrouter' | 'kimi' | 'ollama';
 
 export interface AICompletionParams {
   prompt: string;
@@ -58,13 +47,70 @@ function isRateLimited(name: AIProviderName, rpm: number): boolean {
   return arr.length >= rpm;
 }
 
-// Circuit breaker — providers that fail with hard errors get disabled for the session
+// Circuit breaker
 const disabledProviders = new Set<AIProviderName>();
 
 // --- Provider factories ----------------------------------------------------
 
 /**
- * Generic factory for OpenAI-compatible APIs (DeepSeek, Mistral, OpenRouter, Kimi).
+ * Gemini provider using the Google AI API.
+ * Uses gemini-2.0-flash-lite as default (fast, cheap, generous free tier).
+ */
+function makeGemini(
+  priority: number,
+  apiKey: string,
+  model: string,
+): ProviderRuntime {
+  return {
+    name: 'gemini',
+    priority,
+    rpm: 60,
+    async call(params) {
+      const contents: { role: string; parts: { text: string }[] }[] = [];
+      if (params.systemPrompt) {
+        contents.push({ role: 'user', parts: [{ text: params.systemPrompt + '\n\n' + params.prompt }] });
+      } else {
+        contents.push({ role: 'user', parts: [{ text: params.prompt }] });
+      }
+
+      const body: Record<string, unknown> = {
+        contents,
+        generationConfig: {
+          temperature: params.temperature ?? 0.1,
+          maxOutputTokens: params.maxTokens ?? 4000,
+          ...(params.jsonMode ? { responseMimeType: 'application/json' } : {}),
+        },
+      };
+
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Gemini API ${res.status}: ${text.slice(0, 200)}`);
+      }
+
+      const data = (await res.json()) as {
+        candidates?: { content?: { parts?: { text?: string }[] } }[];
+        promptFeedback?: { blockReason?: string };
+      };
+
+      if (data.promptFeedback?.blockReason) {
+        throw new Error(`Gemini blocked: ${data.promptFeedback.blockReason}`);
+      }
+
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+      return { content: text, provider: 'gemini' };
+    },
+  };
+}
+
+/**
+ * Generic factory for OpenAI-compatible APIs.
  */
 function makeOpenAICompatible(
   name: AIProviderName,
@@ -124,7 +170,7 @@ function makeOllama(priority: number, model: string, ollamaUrl: string): Provide
         model,
         messages: [
           ...(params.systemPrompt ? [{ role: 'system', content: params.systemPrompt }] : []),
-          { role: 'user', content: params.prompt },
+          { role: 'user', content: params.prompt } as const,
         ],
         stream: false,
         options: {
@@ -165,9 +211,14 @@ function loadProviders(): ProviderRuntime[] {
   let priority = 0;
   const env = process.env;
 
-  // ===== DEEPSEEK (primary — generous free tier, works globally) =====
-  // Sign up at https://platform.deepseek.com — get $5.50 free credit (6 months).
-  // 'deepseek-chat' is the general-purpose model, ~$0.14/M tokens.
+  // ===== GEMINI (primary — generous free tier, works globally) =====
+  if (env.GEMINI_API_KEY) {
+    const model = env.GEMINI_MODEL || 'gemini-2.0-flash-lite-001';
+    console.log(`[ai-router] gemini: key loaded (model: ${model})`);
+    providers.push(makeGemini(priority++, env.GEMINI_API_KEY, model));
+  }
+
+  // ===== DEEPSEEK =====
   if (env.DEEPSEEK_API_KEY) {
     console.log(`[ai-router] deepseek: key loaded (model: ${env.DEEPSEEK_MODEL || 'deepseek-chat'})`);
     providers.push(
@@ -179,11 +230,9 @@ function loadProviders(): ProviderRuntime[] {
     );
   }
 
-  // ===== MISTRAL (secondary — free tier, works globally) =====
-  // Sign up at https://console.mistral.ai — free tier with rate limits.
-  // 'mistral-small-latest' is fast and cheap.
+  // ===== MISTRAL =====
   if (env.MISTRAL_API_KEY) {
-    console.log(`[ai-router] mistral: key loaded (model: ${env.MISTRAL_MODEL || 'mistral-small-latest'})`);
+    console.log(`[ai-router] mistral: key loaded`);
     providers.push(
       makeOpenAICompatible(
         'mistral', priority++, env.MISTRAL_API_KEY,
@@ -193,24 +242,20 @@ function loadProviders(): ProviderRuntime[] {
     );
   }
 
-  // ===== OPENROUTER (tertiary — aggregator, free tier limited to 50/day) =====
-  // Sign up at https://openrouter.ai — works globally but free tier is restrictive.
+  // ===== OPENROUTER =====
   if (env.OPENROUTER_API_KEY) {
-    const defaultOpenRouterModel = 'nvidia/nemotron-3-nano-30b-a3b:free';
-    console.log(`[ai-router] openrouter: key loaded (model: ${env.OPENROUTER_MODEL || defaultOpenRouterModel})`);
     providers.push(
       makeOpenAICompatible(
         'openrouter', priority++, env.OPENROUTER_API_KEY,
-        env.OPENROUTER_MODEL || defaultOpenRouterModel,
+        env.OPENROUTER_MODEL || 'nvidia/nemotron-3-nano-30b-a3b:free',
         'https://openrouter.ai/api/v1', 20,
         { 'HTTP-Referer': 'https://tja.local', 'X-Title': 'Telegram Job Aggregator' },
       ),
     );
   }
 
-  // ===== KIMI (quaternary — Chinese provider) =====
+  // ===== KIMI =====
   if (env.KIMI_API_KEY) {
-    console.log(`[ai-router] kimi: key loaded (model: ${env.KIMI_MODEL || 'moonshot-v1-8k'})`);
     providers.push(
       makeOpenAICompatible(
         'kimi', priority++, env.KIMI_API_KEY,
@@ -220,16 +265,15 @@ function loadProviders(): ProviderRuntime[] {
     );
   }
 
-  // ===== OLLAMA (local fallback — unlimited, requires local install) =====
+  // ===== OLLAMA =====
   if (env.OLLAMA_URL || env.OLLAMA_MODEL) {
-    console.log(`[ai-router] ollama: configured (model: ${env.OLLAMA_MODEL || 'phi4:latest'}, url: ${env.OLLAMA_URL || 'http://localhost:11434'})`);
     providers.push(makeOllama(priority++, env.OLLAMA_MODEL || 'phi4:latest', env.OLLAMA_URL || 'http://localhost:11434'));
   }
 
   if (providers.length === 0) {
     console.warn('[ai-router] ⚠️  No AI providers configured!');
-    console.warn('[ai-router]    Set at least one of: DEEPSEEK_API_KEY, MISTRAL_API_KEY, OPENROUTER_API_KEY, KIMI_API_KEY');
-    console.warn('[ai-router]    Recommended: DEEPSEEK_API_KEY (free $5.50 credit at https://platform.deepseek.com)');
+    console.warn('[ai-router]    Set GEMINI_API_KEY in .env.local for AI-powered extraction.');
+    console.warn('[ai-router]    (Alternatively: DEEPSEEK_API_KEY, MISTRAL_API_KEY, etc.)');
   } else {
     console.log(`[ai-router] ${providers.length} provider(s) loaded: ${providers.map((p) => p.name).join(', ')}`);
   }
@@ -242,8 +286,7 @@ export async function complete(params: AICompletionParams): Promise<AICompletion
   const providers = loadProviders();
   if (providers.length === 0) {
     throw new Error(
-      'No AI providers configured. Set at least one of: DEEPSEEK_API_KEY, MISTRAL_API_KEY, OPENROUTER_API_KEY, KIMI_API_KEY, or OLLAMA_URL. ' +
-        'Recommended: DEEPSEEK_API_KEY (free $5.50 credit at https://platform.deepseek.com).',
+      'No AI providers configured. Set GEMINI_API_KEY in .env.local for AI-powered extraction.',
     );
   }
 
@@ -263,15 +306,21 @@ export async function complete(params: AICompletionParams): Promise<AICompletion
       errors.push({ provider: p.name, error: msg });
       console.error(`[ai-router] ${p.name} failed:`, msg);
 
-      // Circuit breaker: disable for session on hard errors
+      // Circuit breaker
       const isHardError =
-        msg.includes(' 403:') ||
+        msg.includes(' 429:') ||
+    msg.includes(' 403:') ||
         msg.includes(' 401:') ||
         msg.includes('Forbidden') ||
         msg.includes('Unauthorized') ||
+        msg.includes('API_KEY_INVALID') ||
+        msg.includes('API key not valid') ||
         msg.includes('limit: 0') ||
         /all \d+ keys have exhausted/.test(msg) ||
-        msg.includes('free-models-per-day'); // OpenRouter daily limit
+        msg.includes('free-models-per-day') ||
+        msg.includes('API_KEY_EXPIRED') ||
+        msg.includes('not found for API');
+
       if (isHardError) {
         console.warn(`[ai-router] ${p.name} disabled for this session (circuit breaker)`);
         disabledProviders.add(p.name);
@@ -289,9 +338,6 @@ export async function complete(params: AICompletionParams): Promise<AICompletion
   throw new Error(`All AI providers failed: ${JSON.stringify(errors)}`);
 }
 
-/**
- * Convenience: complete + parse as JSON (tolerant of markdown fences).
- */
 export async function completeJson<T = unknown>(params: AICompletionParams): Promise<T> {
   const result = await complete({ ...params, jsonMode: true });
   return parseJsonLoose<T>(result.content);

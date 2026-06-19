@@ -88,7 +88,7 @@ function extractLinks(
   const seen = new Set<string>();
 
   // Inline URLs in message text
-  $msg.find('.tgme_widget_message_text a').each((_, a) => {
+  $msg.find('.tgme_widget_message_text a').each((_i: number, a: any) => {
     const href = $(a).attr('href');
     const text = $(a).text().trim();
     if (href && !href.startsWith('javascript:') && !seen.has(href)) {
@@ -98,7 +98,7 @@ function extractLinks(
   });
 
   // Inline reply-keyboard buttons (hahujobs "Apply" button etc.)
-  $msg.find('.tgme_widget_message_inline_button').each((_, btn) => {
+  $msg.find('.tgme_widget_message_inline_button').each((_bi: number, btn: any) => {
     const href = $(btn).attr('href');
     const text = $(btn).text().trim();
     if (href && !href.startsWith('javascript:') && !seen.has(href)) {

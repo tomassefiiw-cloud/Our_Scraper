@@ -22,6 +22,7 @@ export async function GET(req: Request) {
   const disabled = listDisabledProviders();
 
   const envStatus: Record<string, boolean> = {
+    GEMINI_API_KEY: !!process.env.GEMINI_API_KEY,
     DEEPSEEK_API_KEY: !!process.env.DEEPSEEK_API_KEY,
     MISTRAL_API_KEY: !!process.env.MISTRAL_API_KEY,
     OPENROUTER_API_KEY: !!process.env.OPENROUTER_API_KEY,

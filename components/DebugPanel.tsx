@@ -10,8 +10,7 @@ interface Stats {
   jobs?: number;
   user_preferences?: number;
   user_interactions?: number;
-  error?: string;
-  [k: string]: number | string | undefined;
+  error?: number;
 }
 
 interface RawMessageDebug {
@@ -44,8 +43,7 @@ export default function DebugPanel() {
   const refresh = async () => {
     setLoading(true);
     const s = await getDbStats();
-    setStats(s);
-    // Also fetch recent raw_messages with their status
+    setStats(s as unknown as Stats);
     try {
       const msgs = await queryAll<RawMessageDebug>(
         `SELECT id, channel_username, telegram_msg_id, status,
@@ -80,40 +78,39 @@ export default function DebugPanel() {
     setMsg('Testing AI provider…');
     try {
       const res = await fetch('/api/debug?test=1');
-      const data = await res.json();
-      const providerCount = data.providers?.length ?? 0;
+      const data = await res.json() as Record<string, unknown>;
+      const providerCount = (data.providers as string[] | undefined)?.length ?? 0;
       const usingRuleBased = providerCount === 0;
 
-      // If no AI provider is configured, the test endpoint will return ok=false
-      // with "No AI providers configured" — but that's expected, not an error.
-      // The app falls back to rule-based extraction automatically.
       if (usingRuleBased) {
         setAiTest({
-          ok: true, // not really "ok" but using rule-based which always works
+          ok: true,
           provider: 'rule-based (no AI key set)',
-          response: 'Rule-based extractor is active. Add a DeepSeek key for better quality.',
+          response: 'Rule-based extractor is active. Add a GEMINI_API_KEY for better quality.',
           providers: [],
-          disabledProviders: data.disabledProviders ?? [],
+          disabledProviders: (data.disabledProviders as string[]) ?? [],
         });
-        setMsg('ℹ️ No AI key set — using rule-based extractor (free, 100% offline). Add DEEPSEEK_API_KEY for better quality.');
+        setMsg('ℹ️ No AI key set — using rule-based extractor. Set GEMINI_API_KEY for better quality.');
       } else {
+        const testData = data.test as Record<string, unknown> | undefined;
         setAiTest({
-          ok: data.test?.ok ?? false,
-          provider: data.test?.provider,
-          response: data.test?.response,
-          error: data.test?.error,
-          providers: data.providers,
-          disabledProviders: data.disabledProviders ?? [],
+          ok: (testData?.ok as boolean) ?? false,
+          provider: testData?.provider as string,
+          response: testData?.response as string,
+          error: testData?.error as string,
+          providers: data.providers as string[],
+          disabledProviders: (data.disabledProviders as string[]) ?? [],
         });
         setMsg(
-          data.test?.ok
-            ? `✓ AI works (${data.test.provider}) — ${providerCount} provider(s) active`
-            : `✗ AI failed: ${data.test?.error ?? 'unknown'}`,
+          testData?.ok
+            ? `✓ AI works (${String(testData.provider)}) — ${providerCount} provider(s) active`
+            : `✗ AI failed: ${String(testData?.error ?? 'unknown')}`,
         );
       }
     } catch (err) {
-      setAiTest({ ok: false, error: (err as Error).message });
-      setMsg(`✗ AI test failed: ${(err as Error).message}`);
+      const errMsg = (err as Error).message;
+      setAiTest({ ok: false, error: errMsg });
+      setMsg(`✗ AI test failed: ${errMsg}`);
     } finally {
       setAiTesting(false);
     }
@@ -166,9 +163,9 @@ export default function DebugPanel() {
         </div>
       )}
 
-      {stats?.error && (
+      {stats && stats.error !== undefined && (
         <p className="text-xs text-red-700 bg-red-100 p-2 rounded">
-          DB error: {stats.error}
+          DB error occurred
         </p>
       )}
 
@@ -226,8 +223,7 @@ export default function DebugPanel() {
                 )}
                 {(!aiTest.providers || aiTest.providers.length === 0) && (
                   <p className="text-[10px] mt-1 text-red-700">
-                    → No active providers! Add a key to .env (DEEPSEEK_API_KEY recommended)
-                    and restart dev server.
+                    → No active providers! Add GEMINI_API_KEY to .env.local and restart dev server.
                   </p>
                 )}
               </>

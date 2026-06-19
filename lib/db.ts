@@ -234,6 +234,6 @@ export async function getDbStats(): Promise<Record<string, number>> {
     return stats;
   } catch (err) {
     console.error('[db] getDbStats failed:', err);
-    return { error: (err as Error).message };
+    return { error: -1 } as Record<string, number>;
   }
 }
