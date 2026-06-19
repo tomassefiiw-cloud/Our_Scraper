@@ -48,7 +48,9 @@ function extractSingleJob(text: string, lines: string[], links: string[], channe
   const description = text.length > 200 ? text.slice(0, 1500) : text;
   const howToApply = extractHowToApply(text, links);
   const category = guessCategory(text + ' ' + hashtags.join(' '), title ?? '');
-  const cats = detectCategories(text + ' ' + (title ?? ''));
+  // Strip common field labels to avoid false categories
+  const cleanText = (text + ' ' + (title ?? '')).replace(/(?:^|\n)\s*(?:Education|Qualification|Experience|Requirement|Responsibility|Deadline|Location|Salary|Company|Employment|Work Type)\s*[:–\-]\s*/gi, '');
+  const cats = detectCategories(cleanText);
   return {
     title, title_amharic: extractAmharic(title ?? '') || null,
     company_name: company, company_name_amharic: null,
@@ -193,25 +195,26 @@ function extractExperience(text: string): { min: number | null; max: number | nu
 }
 
 function extractSalary(text: string): { min: number | null; max: number | null; text: string } | null {
-  // Single value with currency
-  let m = text.match(/(\d[\d,]*)\s*(?:ETB|Birr|br\.?)\b/i);
-  if (m) return { min: parseInt(m[1].replace(/,/g,''),10), max: null, text: m[0].trim() };
-  // Range: X - Y ETB
-  m = text.match(/(\d[\d,]*)\s*[-–]\s*(\d[\d,]*)\s*(?:ETB|Birr|br\.?)\b/i);
+  // 1. Try range: X - Y ETB (MUST be first to avoid partial match)
+  let m = text.match(/(\d[\d,]*)\s*[-–]\s*(\d[\d,]*)\s*(?:ETB|Birr|br\.?)\b/i);
   if (m) return { min: parseInt(m[1].replace(/,/g,''),10), max: parseInt(m[2].replace(/,/g,''),10), text: m[0].trim() };
-  // Range: ETB X - Y
+  // 2. Range: ETB X - Y  
   m = text.match(/(?:ETB|Birr|br\.?)\s*(\d[\d,]*)\s*[-–]\s*(\d[\d,]*)/i);
   if (m) return { min: parseInt(m[1].replace(/,/g,''),10), max: parseInt(m[2].replace(/,/g,''),10), text: m[0].trim() };
-  // salary: X
+  // 3. salary: X - Y
+  m = text.match(/salary\s*[:–\-]?\s*(\d[\d,]*)\s*[-–]\s*(\d[\d,]*)/i);
+  if (m) return { min: parseInt(m[1].replace(/,/g,''),10), max: parseInt(m[2].replace(/,/g,''),10), text: m[0].trim() };
+  // 4. Single: X ETB
+  m = text.match(/(\d[\d,]*)\s*(?:ETB|Birr|br\.?)\b/i);
+  if (m) return { min: parseInt(m[1].replace(/,/g,''),10), max: null, text: m[0].trim() };
+  // 5. salary: X
   m = text.match(/salary\s*[:–\-]?\s*(\d[\d,]*?)(?:\s*(?:ETB|Birr))?(?:\n|$)/i);
   if (m) return { min: parseInt(m[1].replace(/,/g,''),10), max: null, text: m[0].trim() };
-  // K-format: 10k - 18k
+  // 6. K-format: 10k - 18k
   m = text.match(/(\d+)k?\s*[-–]\s*(\d+)k\b/i);
   if (m) return { min: parseInt(m[1],10)*1000, max: parseInt(m[2],10)*1000, text: m[0].trim() };
   return null;
-}
-
-function extractWorkType(text: string, hashtags: string[]): string | null {
+}function extractWorkType(text: string, hashtags: string[]): string | null {
   if (/\bhybrid\b/i.test(text) || hashtags.includes('hybrid')) return 'hybrid';
   if (/\bonsite|on[-\s]?site\b/i.test(text)) return 'onsite';
   if (/\bremote\b/i.test(text) || hashtags.includes('remote')) return 'remote';
@@ -248,32 +251,60 @@ function extractHowToApply(text: string, links: string[]): string | null {
 }
 
 function guessCategory(text: string, title: string): string {
-  const combined = (text + ' ' + title).toLowerCase();
-  const categories: Record<string, string[]> = {
-    tech: ['developer','software','programmer','it ','information technology','computer','data','ai','ml','backend','frontend','fullstack','devops','sysadmin','network','cybersecurity','tech','digital'],
-    health: ['nurse','doctor','medical','health','pharma','clinic','hospital','patient','pharmacist','midwife'],
-    finance: ['accountant','finance','financial','audit','banking','tax','bookkeeper','budget','treasury','investment','loan','credit'],
-    engineering: ['engineer','engineering','civil','mechanical','electrical','construction','architect','surveyor'],
-    marketing: ['marketing','social media','content','seo','brand','advertis','digital marketing','communication'],
-    sales: ['sales','salesperson','account manager','business development','sales representative','merchandiser'],
-    admin: ['admin','assistant','secretary','receptionist','office','clerk','administrative'],
-    creative: ['designer','graphic','ui','ux','creative','artist','photographer','videographer','multimedia'],
-    ngo: ['ngo','non-profit','humanitarian','un ','unicef','usaid','project officer','program officer','community'],
-    education: ['teacher','instructor','professor','education','trainer','academic','lecturer','school'],
-    logistics: ['logistics','warehouse','supply chain','driver','delivery','fleet','procurement','transport'],
-    hospitality: ['hotel','restaurant','chef','cook','waiter','housekeeping','hospitality','lodge'],
-  };
-  for (const [cat, keywords] of Object.entries(categories)) {
-    if (keywords.some((kw) => combined.includes(kw))) return cat;
+  // Use detectCategories with the FULL text (returns array of all matching)
+  const allCats = detectCategories(text + ' ' + title);
+  
+  // If only one category, that's our answer
+  if (allCats.length === 1) return allCats[0];
+  if (allCats.length === 0) return 'other';
+  
+  // Multiple categories: prefer the one that matches more keywords in the TITLE
+  const titleLower = (title || '').toLowerCase();
+  const textLower = (text || '').toLowerCase();
+  
+  // Category priority based on TITLE match (primary focus)
+  const catPriority = [
+    { cat: 'finance', keywords: ['accountant','finance','audit','banking','tax','budget','treasury','credit','loan'] },
+    { cat: 'tech', keywords: ['developer','software','programmer','engineer','data','system','network','cyber'] },
+    { cat: 'health', keywords: ['nurse','doctor','medical','health','pharma','clinic','hospital'] },
+    { cat: 'engineering', keywords: ['civil','mechanical','electrical','construction','architect'] },
+    { cat: 'marketing', keywords: ['marketing','social media','brand','advertising','communication'] },
+    { cat: 'sales', keywords: ['sales','salesperson','merchandiser'] },
+    { cat: 'admin', keywords: ['admin','assistant','secretary','receptionist','clerk','office'] },
+    { cat: 'creative', keywords: ['designer','graphic','creative','artist','photographer'] },
+    { cat: 'ngo', keywords: ['ngo','humanitarian','community','project officer'] },
+    { cat: 'education', keywords: ['teacher','instructor','professor','education','trainer'] },
+    { cat: 'logistics', keywords: ['logistics','warehouse','supply chain','driver','delivery'] },
+    { cat: 'hospitality', keywords: ['hotel','restaurant','chef','hospitality'] },
+    { cat: 'legal', keywords: ['lawyer','legal','attorney','compliance'] },
+    { cat: 'hr', keywords: ['hr','human resource','recruitment'] },
+    { cat: 'management', keywords: ['manager','director','lead','chief','supervisor'] },
+  ];
+  
+  // Check title first
+  for (const {cat, keywords} of catPriority) {
+    if (allCats.includes(cat) && keywords.some(kw => titleLower.includes(kw))) {
+      return cat;
+    }
   }
-  return 'other';
+  
+  // Check company/org name second (avoid "Tech" in company name taking priority)
+  for (const {cat, keywords} of catPriority) {
+    if (allCats.includes(cat) && keywords.some(kw => titleLower.includes(kw))) {
+      return cat;
+    }
+  }
+  
+  // Return the first valid category
+  return allCats[0];
 }
+
 
 export function detectCategories(text: string): string[] {
   const lower = text.toLowerCase();
   const found: string[] = [];
   const checks: [string, string[]][] = [
-    ['tech', ['developer','software','programmer','it ','information technology','computer','data','ai','ml','backend','frontend','fullstack','devops','sysadmin','network','cybersecurity','programming','coding','javascript','python','java','react','sql','digital']],
+    ['tech', ['developer','software','programmer','software engineer','information technology','computer science','data analyst','machine learning','backend developer','frontend developer','fullstack','devops','sysadmin','network engineer','cybersecurity','system administrator','coding','javascript','python','java','sql']],
     ['health', ['nurse','doctor','medical','health','pharma','clinic','hospital','patient','pharmacist','midwife','lab technician']],
     ['finance', ['accountant','finance','financial','audit','banking','tax','bookkeeper','controller','budget','treasury','investment','loan','credit']],
     ['engineering', ['engineer','engineering','civil','mechanical','electrical','construction','architect','surveyor','structural']],
@@ -290,7 +321,7 @@ export function detectCategories(text: string): string[] {
     ['management', ['manager','director','lead','head of','chief','supervisor','coordinator']],
   ];
   for (const [category, keywords] of checks) {
-    if (keywords.some(kw => { const escaped = kw.replace(/\//g, '\\/'); return kw.length <= 3 ? new RegExp('\\b' + escaped + '\\b', 'i').test(lower) : lower.includes(kw); })) found.push(category);
+    if (keywords.some(kw => { const esc = kw.replace(/\//g, "\\/"); const matched = kw.length <= 3 ? new RegExp("\\b" + esc + "\\b", "i").test(lower) : lower.includes(kw); if (matched && kw === 'education') { return !lower.includes('education:') || lower.includes('education officer') || lower.includes('education sector'); } return matched; })) found.push(category);
   }
   return found.length > 0 ? found : ['other'];
 }

@@ -162,20 +162,20 @@ function makeOpenAICompatible(
 
 function makeOllama(priority: number, model: string, ollamaUrl: string): ProviderRuntime {
   return {
-    name: 'ollama',
-    priority,
-    rpm: 9999,
+    name: 'ollama', priority, rpm: 9999,
     async call(params) {
+      // Speed optimization: use tiny context for job extraction
       const body = {
         model,
         messages: [
           ...(params.systemPrompt ? [{ role: 'system', content: params.systemPrompt }] : []),
-          { role: 'user', content: params.prompt } as const,
+          { role: 'user', content: params.prompt },
         ],
         stream: false,
         options: {
           temperature: params.temperature ?? 0.1,
-          num_predict: params.maxTokens ?? 4000,
+          num_predict: Math.min(params.maxTokens ?? 1500, 1500), // Cap at 1500 for speed
+          num_ctx: 4096, // Small context = fast processing
         },
         ...(params.jsonMode ? { format: 'json' } : {}),
       };
@@ -189,14 +189,10 @@ function makeOllama(priority: number, model: string, ollamaUrl: string): Provide
         throw new Error(`Ollama API ${res.status}: ${text.slice(0, 200)}`);
       }
       const data = (await res.json()) as {
-        message?: { content?: string };
-        error?: string;
+        message?: { content?: string }; error?: string;
       };
       if (data.error) throw new Error(`Ollama: ${data.error}`);
-      return {
-        content: data.message?.content ?? '',
-        provider: 'ollama',
-      };
+      return { content: data.message?.content ?? '', provider: 'ollama' };
     },
   };
 }

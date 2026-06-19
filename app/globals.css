@@ -6,8 +6,33 @@
 
 body {
   @apply bg-gray-50 text-gray-900 antialiased;
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
 }
 
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* Prose styling for job descriptions */
+.prose-sm h1, .prose-sm h2, .prose-sm h3 {
+  @apply text-gray-900 font-semibold mt-4 mb-2;
+}
+.prose-sm h2 { @apply text-base; }
+.prose-sm h3 { @apply text-sm; }
+.prose-sm p { @apply mb-2 leading-relaxed; }
+.prose-sm ul { @apply list-disc pl-5 space-y-1 mb-3; }
+.prose-sm ol { @apply list-decimal pl-5 space-y-1 mb-3; }
+.prose-sm li { @apply text-gray-700; }
+.prose-sm strong { @apply text-gray-900 font-semibold; }
+
+/* Card hover effect */
+.job-card-hover {
+  @apply transition-all duration-200;
+}
+.job-card-hover:hover {
+  @apply shadow-md -translate-y-0.5;
+}
+
+/* Gradient backgrounds */
+.gradient-brand {
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 50%, #1e40af 100%);
+}

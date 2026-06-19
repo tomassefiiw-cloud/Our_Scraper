@@ -351,7 +351,7 @@ export function detectCategories(text: string): string[] {
   const found: string[] = [];
   
   const checks: [string, string[]][] = [
-    ['tech', ['developer', 'software', 'programmer', 'it ', 'information technology', 'computer', 'data', 'ai', 'ml', 'backend', 'frontend', 'fullstack', 'devops', 'sysadmin', 'network', 'cybersecurity', 'programming', 'coding', 'javascript', 'python', 'java', 'react', 'node', 'database', 'sql']],
+    ['tech', ['developer', 'software', 'programmer', 'information technology', 'computer science', 'computer', 'data', 'machine learning', 'backend', 'frontend', 'fullstack', 'devops', 'sysadmin', 'network', 'cybersecurity', 'programming', 'coding', 'javascript', 'python', 'java', 'react', 'node', 'database', 'sql']],
     ['health', ['nurse', 'doctor', 'medical', 'health', 'pharma', 'clinic', 'hospital', 'patient', 'pharmacist', 'midwife', 'lab technician', 'radiologist']],
     ['finance', ['accountant', 'finance', 'financial', 'audit', 'banking', 'tax', 'bookkeeper', 'controller', 'budget', 'treasury', 'investment', 'loan', 'credit']],
     ['engineering', ['engineer', 'engineering', 'civil', 'mechanical', 'electrical', 'construction', 'architect', 'surveyor', 'structural']],
