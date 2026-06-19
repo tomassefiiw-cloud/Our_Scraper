@@ -51,6 +51,7 @@ export default function SavedPage() {
               titleAmharic: j.title_amharic,
               companyName: j.company_name,
               jobCategory: j.job_category,
+              jobCategories: (() => { try { return JSON.parse(j.job_categories_json || '[]'); } catch { return [j.job_category].filter(Boolean); } })(),
               employmentType: j.employment_type,
               workType: j.work_type,
               minExperienceYears: j.min_experience_years,
