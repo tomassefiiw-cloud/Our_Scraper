@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import SyncPanel from '@/components/SyncPanel';
+import AutoSyncToggle from '@/components/AutoSyncToggle';
 import DebugPanel from '@/components/DebugPanel';
 import { queryAll } from '@/lib/db';
 import { CHANNEL_CONFIGS } from '@/lib/channels';

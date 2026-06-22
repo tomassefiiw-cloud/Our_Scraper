@@ -117,5 +117,13 @@ export function matches(job: ExtractedJob, prefs: UserPreferences): boolean {
   // Closed jobs always filtered out
   if (job.is_closed) return false;
 
+  // Expired deadline filter
+  if (job.deadline) {
+    const deadlineDate = new Date(job.deadline);
+    const today = new Date();
+    today.setHours(23, 59, 59, 999);
+    if (deadlineDate < today) return false;
+  }
+
   return true;
 }

@@ -47,7 +47,7 @@ export default function JobFeed() {
 
       // Load all open jobs
       const rows = await queryAll<JobRow>(
-        `SELECT * FROM jobs WHERE is_closed = 0 ORDER BY posted_at DESC LIMIT 200`,
+        `SELECT * FROM jobs WHERE is_closed = 0 AND (deadline IS NULL OR deadline >= date('now')) ORDER BY posted_at DESC LIMIT 200`,
       );
       const mapped: Job[] = rows.map((r) => {
         let jobCats: string[] = [];
