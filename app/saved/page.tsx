@@ -16,7 +16,6 @@ export default function SavedPage() {
         const rows = await queryAll<JobRow>(
           `SELECT j.* FROM jobs j
            INNER JOIN user_interactions ui ON ui.job_id = j.id
-           WHERE ui.action = 'saved'
            WHERE ui.action = 'saved' AND (j.deadline IS NULL OR j.deadline >= date('now')) ORDER BY ui.created_at DESC`,
         );
         setJobs(rows);

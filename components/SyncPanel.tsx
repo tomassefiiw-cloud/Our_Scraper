@@ -19,6 +19,7 @@ export default function SyncPanel({ onSyncComplete }: { onSyncComplete?: () => v
   };
 
   const syncOne = async (username: string) => {
+    window.dispatchEvent(new CustomEvent("jobs-syncing"));
     setRunning(true);
     setProgress(`Syncing ${username}…`);
     try {
@@ -36,6 +37,7 @@ export default function SyncPanel({ onSyncComplete }: { onSyncComplete?: () => v
   };
 
   const syncAll = async () => {
+    window.dispatchEvent(new CustomEvent("jobs-syncing"));
     setRunning(true);
     setResults([]);
     setTotalJobs(0);
