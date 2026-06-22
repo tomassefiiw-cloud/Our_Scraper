@@ -154,8 +154,14 @@ function cleanTitle(s: string): string {
 function extractCompany(text: string, lines: string[], channelUsername: string): string | null {
   const labeled = text.match(/(?:^|\n)\s*(?:Company\s*Name|Company|Organization|Organisation|Employer|Firm)\s*[:–\-]\s*(.+?)$/im);
   if (labeled) return cleanName(labeled[1]);
-  const hiring = text.match(/(.+?)\s+(?:is hiring|Job Vacancy|Vacancy|vacancies|hiring for|would like to invite)\s*/i);
-  if (hiring) return cleanName(hiring[1].split(/\n/).pop()!.trim());
+  const hiring = text.match(/([A-Z][A-Za-z0-9\s&.]+?)\s+(?:is hiring|Job Vacancy|Vacancy|vacancies|hiring for|would like to invite)\s*/i);
+  if (hiring) {
+    const name = cleanName(hiring[1].split(/\n/).pop()!.trim());
+    const genericWords = ['Job', 'Jobs', 'Vacancy', 'Vacancies', 'Position', 'Positions', 'Career', 'Careers'];
+    if (!genericWords.some(w => name.toLowerCase() === w.toLowerCase() || name.toLowerCase().startsWith(w.toLowerCase() + ' '))) {
+      return name;
+    }
+  }
   const atMatch = text.match(/\b(?:at|@)\s+([A-Z][A-Za-z0-9\s&.]+?)(?:\s*\(|,|\s*–|\s*-|\s*Deadline|\s*$)/i);
   if (atMatch) return cleanName(atMatch[1]);
   for (const line of lines.slice(0, 8)) {
