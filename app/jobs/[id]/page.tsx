@@ -63,7 +63,7 @@ export default function JobDetailPage({ params }: { params: { id: string } }) {
   );
 
   const title = String(job.title ?? '');
-  const company = String(job.company_name ?? job.channel_username ?? '');
+  const company = job.company_name ? String(job.company_name) : '';
   const channel = String(job.channel_username ?? '');
   const deadline = String(job.deadline ?? '');
   const location = String(job.location_city ?? job.location ?? '');
@@ -117,7 +117,7 @@ export default function JobDetailPage({ params }: { params: { id: string } }) {
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0 flex-1">
             <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Company</p>
-            <h1 className="text-2xl md:text-3xl font-bold text-gray-900">{company}</h1>
+            <h1 className="text-2xl md:text-3xl font-bold text-gray-900">{company || <span className="text-gray-400 italic">Company not specified</span>}</h1>
             {channel && <p className="text-xs text-gray-400 mt-1">Source: @{channel}</p>}
           </div>
           <button onClick={toggleSave}

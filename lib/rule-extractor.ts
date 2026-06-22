@@ -32,7 +32,7 @@ function extractSingleJob(text: string, lines: string[], links: string[], channe
   let title = extractTitle(text, lines, company);
   if (!title) title = extractFallbackTitle(lines);
   if (!title && !company && text.length < 30) return null;
-  if (!company) company = channelUsername.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  // Never use channel name as company - leave null so company_name stays null
   const hashtags = extractHashtags(text);
   const deadline = extractDeadline(text);
   const location = extractLocation(text, hashtags);
@@ -53,7 +53,8 @@ function extractSingleJob(text: string, lines: string[], links: string[], channe
   const cats = detectCategories(cleanText);
   return {
     title, title_amharic: extractAmharic(title ?? '') || null,
-    company_name: company, company_name_amharic: null,
+    company_name: company || extractCompanyFromUrls(links),
+    company_name_amharic: null,
     job_category: category,
     job_categories: cats.length > 0 ? cats : [category],
     work_type: workType,
@@ -78,7 +79,7 @@ function extractSingleJob(text: string, lines: string[], links: string[], channe
 }
 
 function extractMultiJobs(text: string, lines: string[], links: string[], channelUsername: string): ExtractedJob[] {
-  const company = extractCompany(text, lines, channelUsername) || channelUsername.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  const company = extractCompany(text, lines, channelUsername) || null;
   const jobs: ExtractedJob[] = [];
   const hashtags = extractHashtags(text);
   const commonDeadline = extractDeadline(text);
@@ -93,7 +94,8 @@ function extractMultiJobs(text: string, lines: string[], links: string[], channe
     const cats = detectCategories(text + ' ' + title);
     jobs.push({
       title, title_amharic: extractAmharic(title) || null,
-      company_name: company, company_name_amharic: null,
+      company_name: company || extractCompanyFromUrls(links),
+      company_name_amharic: null,
       job_category: cats[0] || 'other',
       job_categories: cats.length > 0 ? cats : ['other'],
       employment_type: null, work_type: null,
@@ -329,6 +331,28 @@ export function detectCategories(text: string): string[] {
 function extractAmharic(text: string): string | null {
   const amharic = text.match(/[\u1200-\u137F]+[\s\u1200-\u137F]*[\u1200-\u137F]+/);
   return amharic ? amharic[0].trim().slice(0, 200) : null;
+}
+
+/**
+ * Extract company name from URLs by looking at domain patterns
+ */
+function extractCompanyFromUrls(links: string[]): string | null {
+  if (!links || links.length === 0) return null;
+  for (const url of links) {
+    try {
+      const host = new URL(url).hostname.replace('www.', '');
+      // Skip social media and Telegram
+      if (host.includes('t.me') || host.includes('facebook') || host.includes('linkedin')) continue;
+      // Extract company from domain
+      const parts = host.split('.');
+      if (parts.length >= 2) {
+        const name = parts[parts.length - 2];
+        // Capitalize properly
+        return name.charAt(0).toUpperCase() + name.slice(1).replace(/[-_]/g, ' ');
+      }
+    } catch {}
+  }
+  return null;
 }
 
 function formatDate(dateStr: string): string | null {
